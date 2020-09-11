@@ -2,7 +2,6 @@
 #define GUILITE_WIDGETS_INCLUDE_BUTTON_H
 
 #include "../core_include/api.h"
-#include "../core_include/rect.h"
 #include "../core_include/cmd_target.h"
 #include "../core_include/wnd.h"
 #include "../core_include/resource.h"
@@ -11,9 +10,8 @@
 #include "../core_include/display.h"
 #include "../core_include/theme.h"
 
-#define GL_BN_CLICKED							0x1111
-#define ON_GL_BN_CLICKED(func)                                       \
-{MSG_TYPE_WND, GL_BN_CLICKED, 0, msgCallback(&func)},
+#define GL_BN_CLICKED			0x1111
+#define ON_GL_BN_CLICKED(func) 	{MSG_TYPE_WND, GL_BN_CLICKED, 0, msgCallback(&func)},
 
 typedef struct struct_bitmap_info BITMAP_INFO;
 class c_button : public c_wnd
@@ -85,19 +83,19 @@ protected:
 			notify_parent(GL_BN_CLICKED, 0);
 		}
 	}
-	virtual void on_key(KEY_TYPE key)
+	virtual void on_navigate(NAVIGATION_KEY key)
 	{
 		switch (key)
 		{
-		case KEY_ENTER:
+		case NAV_ENTER:
 			on_touch(m_wnd_rect.m_left, m_wnd_rect.m_top, TOUCH_DOWN);
 			on_touch(m_wnd_rect.m_left, m_wnd_rect.m_top, TOUCH_UP);
 			break;
-		case KEY_FORWARD:
-		case KEY_BACKWARD:
+		case NAV_FORWARD:
+		case NAV_BACKWARD:
 			break;
 		}
-		return c_wnd::on_key(key);
+		return c_wnd::on_navigate(key);
 	}
 };
 

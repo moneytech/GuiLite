@@ -2,6 +2,8 @@
 #define GUILITE_CORE_INCLUDE_API_H
 
 #define REAL_TIME_TASK_CYCLE_MS		50
+#define MAX(a,b) (((a)>(b))?(a):(b))
+#define MIN(a,b) (((a)<(b))?(a):(b))
 
 #define GL_ARGB(a, r, g, b) ((((unsigned int)(a)) << 24) | (((unsigned int)(r)) << 16) | (((unsigned int)(g)) << 8) | ((unsigned int)(b)))
 #define GL_ARGB_A(rgb) ((((unsigned int)(rgb)) >> 24) & 0xFF)
@@ -19,7 +21,7 @@
 #define ALIGN_HMASK			0x03000000L
 
 #define ALIGN_VCENTER		0x00000000L
-#define ALIGN_TOP				0x00100000L
+#define ALIGN_TOP			0x00100000L
 #define ALIGN_BOTTOM		0x00200000L
 #define ALIGN_VMASK			0x00300000L
 
@@ -67,6 +69,39 @@ private:
 	int		m_tail;
 	void* m_read_sem;
 	void* m_write_mutex;
+};
+
+class c_rect
+{
+public:
+	c_rect(){ m_left = m_top = m_right = m_bottom = -1; }
+	c_rect(int left, int top, int width, int height)
+	{
+		set_rect(left, top, width, height);
+	}
+	void set_rect(int left, int top, int width, int height)
+	{
+		ASSERT(width > 0 && height > 0);
+		m_left = left;
+		m_top = top;
+		m_right = left + width - 1;
+		m_bottom = top + height -1;
+	}
+	bool pt_in_rect(int x, int y) const
+	{
+		return x >= m_left && x <= m_right && y >= m_top && y <= m_bottom;
+	}
+	int operator==(const c_rect& rect) const
+	{
+		return (m_left == rect.m_left) && (m_top == rect.m_top) && (m_right == rect.m_right) && (m_bottom == rect.m_bottom);
+	}
+	int width() const { return m_right - m_left + 1; }
+	int height() const { return m_bottom - m_top + 1 ; }
+
+	int	    m_left;
+	int     m_top;
+	int     m_right;
+	int     m_bottom;
 };
 #endif
 #ifndef GUILITE_CORE_INCLUDE_CMD_TARGET_H
@@ -187,51 +222,6 @@ private:
 	static GL_MSG_ENTRY ms_usr_map_entries[USR_MSG_MAX];
 	static unsigned short ms_user_map_size;
 	GL_DECLARE_MESSAGE_MAP()
-};
-#endif
-#ifndef GUILITE_CORE_INCLUDE_RECT_H
-#define GUILITE_CORE_INCLUDE_RECT_H
-#define MAX(a,b) (((a)>(b))?(a):(b))
-#define MIN(a,b) (((a)<(b))?(a):(b))
-class c_rect
-{
-public:
-	c_rect(){Empty();}
-	c_rect(int left, int top, int right, int bottom){m_left = left;m_top = top;m_right = right;m_bottom = bottom;};
-	void SetRect(int Left, int Top, int Right, int Bottom)
-	{
-		m_left = MIN(Left, Right);
-		m_top = MIN(Top, Bottom);
-		m_right = MAX(Left, Right);
-		m_bottom = MAX(Top, Bottom);
-	}
-	c_rect(const c_rect& rect)
-	{
-		SetRect(rect.m_left, rect.m_top, rect.m_right, rect.m_bottom);
-	}
-	void Empty()
-	{
-		m_left = m_top = m_right = m_bottom = 0;
-	}
-	int IsEmpty() const
-	{
-		return m_top == m_bottom || m_left == m_right;
-	}
-	bool PtInRect(int x, int y) const
-	{
-		return x >= m_left && x <= m_right && y >= m_top && y <= m_bottom;
-	}
-	int operator==(const c_rect& rect) const
-	{
-		return (m_left == rect.m_left) && (m_top == rect.m_top) &&
-			(m_right == rect.m_right) && (m_bottom == rect.m_bottom);
-	}
-	int Width() const   {return m_right - m_left + 1;}
-	int Height() const {return m_bottom - m_top + 1;}
-	int	    m_left;
-	int     m_top;
-	int     m_right;
-	int     m_bottom;
 };
 #endif
 #ifndef  GUILITE_CORE_INCLUDE_RESOURCE_H
@@ -389,8 +379,9 @@ class c_surface;
 class c_display {
 	friend class c_surface;
 public:
-	inline c_display(void* phy_fb, int display_width, int display_height, int surface_width, int surface_height, unsigned int color_bytes, int surface_cnt, EXTERNAL_GFX_OP* gfx_op = 0);
-	inline c_surface* alloc_surface(Z_ORDER_LEVEL max_zorder);
+	inline c_display(void* phy_fb, int display_width, int display_height, int surface_width, int surface_height, unsigned int color_bytes, int surface_cnt, EXTERNAL_GFX_OP* gfx_op = 0);//multiple surface or surface_no_fb
+	inline c_display(void* phy_fb, int display_width, int display_height, c_surface* surface);//single custom surface
+	inline c_surface* alloc_surface(Z_ORDER_LEVEL max_zorder, c_rect layer_rect = c_rect());//for multiple surfaces
 	inline int swipe_surface(c_surface* s0, c_surface* s1, int x0, int x1, int y0, int y1, int offset);
 	int get_width() { return m_width; }
 	int get_height() { return m_height; }
@@ -414,7 +405,7 @@ public:
 	}
 	int snap_shot(const char* file_name)
 	{
-		if (!m_phy_fb)
+		if (!m_phy_fb || (m_color_bytes !=2 && m_color_bytes != 4))
 		{
 			return -1;
 		}
@@ -441,71 +432,49 @@ private:
 	int				m_width;		//in pixels
 	int				m_height;		//in pixels
 	int				m_color_bytes;	//16 bits, 32 bits only
-	void* m_phy_fb;
+	void*			m_phy_fb;
 	int				m_phy_read_index;
 	int				m_phy_write_index;
-	c_surface* m_surface_group[SURFACE_CNT_MAX];
+	c_surface*		m_surface_group[SURFACE_CNT_MAX];
 	int				m_surface_cnt;
 	int				m_surface_index;
 };
-class c_frame_layer
+class c_layer
 {
 public:
-	c_frame_layer() { fb = 0; }
-	unsigned short* fb;
-	c_rect 	visible_rect;
+	c_layer() { fb = 0; }
+	void* fb;
+	c_rect 	rect;
 };
-#define GL_ROUND_RGB_32(rgb) (rgb & 0xFFF8FCF8) //make RGB32 = RGB16
 class c_surface {
 	friend class c_display; friend class c_bitmap;
 public:
-	c_surface(c_display* display, unsigned int width, unsigned int height, unsigned int color_bytes) : m_width(width), m_height(height), m_color_bytes(color_bytes), m_fb(0), m_is_active(false), m_max_zorder(Z_ORDER_LEVEL_0), m_top_zorder(Z_ORDER_LEVEL_0), m_phy_fb(0), m_phy_write_index(0), m_display(0)
+	c_surface(unsigned int width, unsigned int height, unsigned int color_bytes, Z_ORDER_LEVEL max_zorder = Z_ORDER_LEVEL_0, c_rect overlpa_rect = c_rect()) : m_width(width), m_height(height), m_color_bytes(color_bytes), m_fb(0), m_is_active(false), m_top_zorder(Z_ORDER_LEVEL_0), m_phy_fb(0), m_phy_write_index(0), m_display(0)
 	{
-		if (display)
-		{
-			m_display = display;
-			m_phy_fb = display->m_phy_fb;
-			m_phy_write_index = &display->m_phy_write_index;
-		}
-		m_frame_layers[Z_ORDER_LEVEL_0].visible_rect = c_rect(0, 0, m_width, m_height);
-	}
-	void set_surface(Z_ORDER_LEVEL max_z_order)
-	{
-		m_max_zorder = max_z_order;
-		if (m_display->m_surface_cnt > 1)
-		{
-			m_fb = calloc(m_width * m_height, m_color_bytes);
-		}
-		for (int i = Z_ORDER_LEVEL_0; i < m_max_zorder; i++)
-		{//Top layber fb always be 0
-			m_frame_layers[i].fb = (unsigned short*)calloc(m_width * m_height, sizeof(unsigned short));
-			ASSERT(0 != m_frame_layers[i].fb);
-		}
+		(overlpa_rect == c_rect()) ? set_surface(max_zorder, c_rect(0, 0, width - 1, height - 1)) : set_surface(max_zorder, overlpa_rect);
 	}
 	int get_width() { return m_width; }
 	int get_height() { return m_height; }
 	unsigned int get_pixel(int x, int y, unsigned int z_order)
 	{
-		if (x >= m_width || y >= m_height || x < 0 || y < 0 ||
-			z_order >= Z_ORDER_LEVEL_MAX)
+		if (x >= m_width || y >= m_height || x < 0 || y < 0 || z_order >= Z_ORDER_LEVEL_MAX)
 		{
 			ASSERT(false);
 			return 0;
 		}
-		if (z_order == m_max_zorder)
+		if (m_layers[z_order].fb)
 		{
-			if (m_fb)
-			{
-				return (m_color_bytes == 4) ? ((unsigned int*)m_fb)[y * m_width + x] : GL_RGB_16_to_32(((unsigned short*)m_fb)[y * m_width + x]);
-			}
-			else if (m_phy_fb)
-			{
-				return (m_color_bytes == 4) ? ((unsigned int*)m_phy_fb)[y * m_width + x] : GL_RGB_16_to_32(((unsigned short*)m_phy_fb)[y * m_width + x]);
-			}
-			return 0;
+			return (m_color_bytes == 4) ? ((unsigned int*)(m_layers[z_order].fb))[y * m_width + x] : GL_RGB_16_to_32(((unsigned short*)(m_layers[z_order].fb))[y * m_width + x]);
 		}
-		unsigned short rgb_16 = ((unsigned short*)(m_frame_layers[z_order].fb))[y * m_width + x];
-		return GL_RGB_16_to_32(rgb_16);
+		else if (m_fb)
+		{
+			return (m_color_bytes == 4) ? ((unsigned int*)m_fb)[y * m_width + x] : GL_RGB_16_to_32(((unsigned short*)m_fb)[y * m_width + x]);
+		}
+		else if (m_phy_fb)
+		{
+			return (m_color_bytes == 4) ? ((unsigned int*)m_phy_fb)[y * m_width + x] : GL_RGB_16_to_32(((unsigned short*)m_phy_fb)[y * m_width + x]);
+		}
+		return 0;
 	}
 	virtual void draw_pixel(int x, int y, unsigned int rgb, unsigned int z_order)
 	{
@@ -518,35 +487,42 @@ public:
 			ASSERT(false);
 			return;
 		}
-		rgb = GL_ROUND_RGB_32(rgb);
 		if (z_order == m_max_zorder)
 		{
 			return draw_pixel_on_fb(x, y, rgb);
 		}
+		
 		if (z_order > (unsigned int)m_top_zorder)
 		{
 			m_top_zorder = (Z_ORDER_LEVEL)z_order;
 		}
-		if (0 == m_frame_layers[z_order].visible_rect.PtInRect(x, y))
+		if (m_layers[z_order].rect.pt_in_rect(x, y))
 		{
-			ASSERT(false);
-			return;
+			c_rect layer_rect = m_layers[z_order].rect;
+			if (m_color_bytes == 4)
+			{
+				((unsigned int*)(m_layers[z_order].fb))[(x - layer_rect.m_left) + (y - layer_rect.m_top) * layer_rect.width()] = rgb;
+			}
+			else
+			{
+				((unsigned short*)(m_layers[z_order].fb))[(x - layer_rect.m_left) + (y - layer_rect.m_top) * layer_rect.width()] = GL_RGB_32_to_16(rgb);
+			}
 		}
-		((unsigned short*)(m_frame_layers[z_order].fb))[x + y * m_width] = GL_RGB_32_to_16(rgb);
+		
 		if (z_order == m_top_zorder)
 		{
 			return draw_pixel_on_fb(x, y, rgb);
 		}
-		bool is_covered = false;
+		bool be_overlapped = false;
 		for (unsigned int tmp_z_order = Z_ORDER_LEVEL_MAX - 1; tmp_z_order > z_order; tmp_z_order--)
 		{
-			if (true == m_frame_layers[tmp_z_order].visible_rect.PtInRect(x, y))
+			if (m_layers[tmp_z_order].rect.pt_in_rect(x, y))
 			{
-				is_covered = true;
+				be_overlapped = true;
 				break;
 			}
 		}
-		if (!is_covered)
+		if (!be_overlapped)
 		{
 			draw_pixel_on_fb(x, y, rgb);
 		}
@@ -557,7 +533,6 @@ public:
 		y0 = (y0 < 0) ? 0 : y0;
 		x1 = (x1 > (m_width - 1)) ? (m_width - 1) : x1;
 		y1 = (y1 > (m_height - 1)) ? (m_height - 1) : y1;
-		rgb = GL_ROUND_RGB_32(rgb);
 		if (z_order == m_max_zorder)
 		{
 			return fill_rect_on_fb(x0, y0, x1, y1, rgb);
@@ -565,15 +540,23 @@ public:
 		if (z_order == m_top_zorder)
 		{
 			int x, y;
-			unsigned short* mem_fb;
+			c_rect layer_rect = m_layers[z_order].rect;
 			unsigned int rgb_16 = GL_RGB_32_to_16(rgb);
 			for (y = y0; y <= y1; y++)
 			{
-				x = x0;
-				mem_fb = &((unsigned short*)m_frame_layers[z_order].fb)[y * m_width + x];
-				for (; x <= x1; x++)
+				for (x = x0; x <= x1; x++)
 				{
-					*mem_fb++ = rgb_16;
+					if (layer_rect.pt_in_rect(x, y))
+					{
+						if (m_color_bytes == 4)
+						{
+							((unsigned int*)m_layers[z_order].fb)[(y - layer_rect.m_top) * layer_rect.width() + (x - layer_rect.m_left)] = rgb;
+						}
+						else
+						{
+							((unsigned short*)m_layers[z_order].fb)[(y - layer_rect.m_top) * layer_rect.width() + (x - layer_rect.m_left)] = rgb_16;
+						}
+					}
 				}
 			}
 			return fill_rect_on_fb(x0, y0, x1, y1, rgb);
@@ -599,95 +582,32 @@ public:
 	}
 	void draw_line(int x1, int y1, int x2, int y2, unsigned int rgb, unsigned int z_order)
 	{
-		int dx, dy, e;
-		dx = x2 - x1;
-		dy = y2 - y1;
-		if ((dx >= 0) && (dy >= 0))
+		int dx, dy, x, y, e;
+		(x1 > x2) ? (dx = x1 - x2) : (dx = x2 - x1);
+		(y1 > y2) ? (dy = y1 - y2) : (dy = y2 - y1);
+		if (((dx > dy) && (x1 > x2)) || ((dx <= dy) && (y1 > y2)))
 		{
-			if (dx >= dy)
+			x = x2; y = y2;
+			x2 = x1; y2 = y1;
+			x1 = x; y1 = y;
+		}
+		x = x1; y = y1;
+		if (dx > dy)
+		{
+			e = dy - dx / 2;
+			for (; x1 <= x2; ++x1, e += dy)
 			{
-				e = dy - dx / 2;
-				for (; x1 <= x2; x1++, e += dy)
-				{
-					draw_pixel(x1, y1, rgb, z_order);
-					if (e > 0) { y1++; e -= dx; }
-				}
-			}
-			else
-			{
-				e = dx - dy / 2;
-				for (; y1 <= y2; y1++, e += dx)
-				{
-					draw_pixel(x1, y1, rgb, z_order);
-					if (e > 0) { x1++; e -= dy; }
-				}
+				draw_pixel(x1, y1, rgb, z_order);
+				if (e > 0) { e -= dx; (y > y2) ? --y1 : ++y1; }
 			}
 		}
-		else if ((dx >= 0) && (dy < 0))
+		else
 		{
-			dy = -dy;
-			if (dx >= dy)
+			e = dx - dy / 2;
+			for (; y1 <= y2; ++y1, e += dx)
 			{
-				e = dy - dx / 2;
-				for (; x1 <= x2; x1++, e += dy)
-				{
-					draw_pixel(x1, y1, rgb, z_order);
-					if (e > 0) { y1--; e -= dx; }
-				}
-			}
-			else
-			{
-				e = dx - dy / 2;
-				for (; y1 >= y2; y1--, e += dx)
-				{
-					draw_pixel(x1, y1, rgb, z_order);
-					if (e > 0) { x1++; e -= dy; }
-				}
-			}
-		}
-		else if ((dx < 0) && (dy >= 0))
-		{
-			dx = -dx;
-			if (dx >= dy)
-			{
-				e = dy - dx / 2;
-				for (; x1 >= x2; x1--, e += dy)
-				{
-					draw_pixel(x1, y1, rgb, z_order);
-					if (e > 0) { y1++; e -= dx; }
-				}
-			}
-			else
-			{
-				e = dx - dy / 2;
-				for (; y1 <= y2; y1++, e += dx)
-				{
-					draw_pixel(x1, y1, rgb, z_order);
-					if (e > 0) { x1--; e -= dy; }
-				}
-			}
-		}
-		else if ((dx < 0) && (dy < 0))
-		{
-			dx = -dx;
-			dy = -dy;
-			if (dx >= dy)
-			{
-				e = dy - dx / 2;
-				for (; x1 >= x2; x1--, e += dy)
-				{
-					draw_pixel(x1, y1, rgb, z_order);
-					if (e > 0) { y1--; e -= dx; }
-				}
-			}
-			else
-			{
-				e = dx - dy / 2;
-				for (; y1 >= y2; y1--, e += dx)
-				{
-					draw_pixel(x1, y1, rgb, z_order);
-					if (e > 0) { x1--; e -= dy; }
-				}
+				draw_pixel(x1, y1, rgb, z_order);
+				if (e > 0) { e -= dy; (x > x2) ? --x1 : ++x1; }
 			}
 		}
 	}
@@ -737,49 +657,21 @@ public:
 	}
 	bool is_active() { return m_is_active; }
 	c_display* get_display() { return m_display; }
-	int set_frame_layer_visible_rect(c_rect& rect, unsigned int z_order)
+	int show_layer(c_rect& rect, unsigned int z_order)
 	{
-		if (rect == m_frame_layers[z_order].visible_rect)
+		ASSERT(z_order >= Z_ORDER_LEVEL_0 && z_order < Z_ORDER_LEVEL_MAX);
+		c_rect layer_rect = m_layers[z_order].rect;
+		ASSERT(rect.m_left >= layer_rect.m_left && rect.m_right <= layer_rect.m_right &&
+			rect.m_top >= layer_rect.m_top && rect.m_bottom <= layer_rect.m_bottom);
+		void* fb = m_layers[z_order].fb;
+		int width = layer_rect.width();
+		for (int y = rect.m_top; y <= rect.m_bottom; y++)
 		{
-			return 0;
-		}
-		if (rect.m_left < 0 || rect.m_left >= m_width ||
-			rect.m_right < 0 || rect.m_right >= m_width ||
-			rect.m_top < 0 || rect.m_top >= m_height ||
-			rect.m_bottom < 0 || rect.m_bottom >= m_height)
-		{
-			ASSERT(false);
-			return -1;
-		}
-		if (!(z_order > Z_ORDER_LEVEL_0&& z_order < Z_ORDER_LEVEL_MAX))
-		{
-			ASSERT(false);
-			return -2;
-		}
-		if (z_order < (unsigned int)m_top_zorder)
-		{
-			ASSERT(false);
-			return -3;
-		}
-		m_top_zorder = (Z_ORDER_LEVEL)z_order;
-		c_rect old_rect = m_frame_layers[z_order].visible_rect;
-		//Recover the lower layer
-		int src_zorder = (Z_ORDER_LEVEL)(z_order - 1);
-		for (int y = old_rect.m_top; y <= old_rect.m_bottom; y++)
-		{
-			for (int x = old_rect.m_left; x <= old_rect.m_right; x++)
+			for (int x = rect.m_left; x <= rect.m_right; x++)
 			{
-				if (!rect.PtInRect(x, y))
-				{
-					unsigned int rgb = ((unsigned short*)(m_frame_layers[src_zorder].fb))[x + y * m_width];
-					draw_pixel_on_fb(x, y, GL_RGB_16_to_32(rgb));
-				}
+				unsigned int rgb = (m_color_bytes == 4) ? ((unsigned int*)fb)[(x - layer_rect.m_left) + (y - layer_rect.m_top) * width] : GL_RGB_16_to_32(((unsigned short*)fb)[(x - layer_rect.m_left) + (y - layer_rect.m_top) * width]);
+				draw_pixel_on_fb(x, y, rgb);
 			}
-		}
-		m_frame_layers[z_order].visible_rect = rect;
-		if (rect.IsEmpty())
-		{
-			m_top_zorder = (Z_ORDER_LEVEL)(z_order - 1);
 		}
 		return 0;
 	}
@@ -843,9 +735,7 @@ protected:
 		{
 			(m_color_bytes == 4) ? ((unsigned int*)m_fb)[y * m_width + x] = rgb : ((unsigned short*)m_fb)[y * m_width + x] = GL_RGB_32_to_16(rgb);
 		}
-		int display_width = m_display->get_width();
-		int display_height = m_display->get_height();
-		if (m_is_active && (x < display_width) && (y < display_height))
+		if (m_is_active && (x < m_display->get_width()) && (y < m_display->get_height()))
 		{
 			if (m_color_bytes == 4)
 			{
@@ -858,23 +748,43 @@ protected:
 			*m_phy_write_index = *m_phy_write_index + 1;
 		}
 	}
+	void attach_display(c_display* display)
+	{
+		ASSERT(display);
+		m_display = display;
+		m_phy_fb = display->m_phy_fb;
+		m_phy_write_index = &display->m_phy_write_index;
+	}
+	void set_surface(Z_ORDER_LEVEL max_z_order, c_rect layer_rect)
+	{
+		m_max_zorder = max_z_order;
+		if (m_display && (m_display->m_surface_cnt > 1))
+		{
+			m_fb = calloc(m_width * m_height, m_color_bytes);
+		}
+		for (int i = Z_ORDER_LEVEL_0; i < m_max_zorder; i++)
+		{//Top layber fb always be 0
+			ASSERT(m_layers[i].fb = calloc(layer_rect.width() * layer_rect.height(), m_color_bytes));
+			m_layers[i].rect = layer_rect;
+		}
+	}
 	int				m_width;		//in pixels
 	int				m_height;		//in pixels
 	int				m_color_bytes;	//16 bits, 32 bits only
-	void* m_fb;						//frame buffer you could see
-	c_frame_layer 	m_frame_layers[Z_ORDER_LEVEL_MAX];//Top layber fb always be 0
+	void*			m_fb;			//frame buffer you could see
+	c_layer 	m_layers[Z_ORDER_LEVEL_MAX];//Top layber fb always be 0
 	bool			m_is_active;
 	Z_ORDER_LEVEL	m_max_zorder;
 	Z_ORDER_LEVEL	m_top_zorder;
-	void* m_phy_fb;
-	int* m_phy_write_index;
-	c_display* m_display;
+	void*			m_phy_fb;
+	int*			m_phy_write_index;
+	c_display*		m_display;
 };
 class c_surface_no_fb : public c_surface {//No physical framebuffer
 	friend class c_display;
+public:
+	c_surface_no_fb(unsigned int width, unsigned int height, unsigned int color_bytes, struct EXTERNAL_GFX_OP* gfx_op, Z_ORDER_LEVEL max_zorder = Z_ORDER_LEVEL_0, c_rect overlpa_rect = c_rect()) : c_surface(width, height, color_bytes, max_zorder, overlpa_rect), m_gfx_op(gfx_op) {}
 protected:
-	c_surface_no_fb(c_display* display, unsigned int width, unsigned int height, unsigned int color_bytes, struct EXTERNAL_GFX_OP* gfx_op) :
-		c_surface(display, width, height, color_bytes), m_gfx_op(gfx_op) {}
 	virtual void fill_rect_on_fb(int x0, int y0, int x1, int y1, unsigned int rgb)
 	{
 		if (!m_gfx_op)
@@ -942,44 +852,27 @@ protected:
 };
 inline c_display::c_display(void* phy_fb, int display_width, int display_height, int surface_width, int surface_height, unsigned int color_bytes, int surface_cnt, EXTERNAL_GFX_OP* gfx_op) : m_width(display_width), m_height(display_height), m_color_bytes(color_bytes), m_phy_fb(phy_fb), m_phy_read_index(0), m_phy_write_index(0), m_surface_cnt(surface_cnt), m_surface_index(0)
 {
-	if (color_bytes != 2 && color_bytes != 4)
-	{
-		log_out("Support 16 bits, 32 bits color only!");
-		ASSERT(false);
-	}
+	ASSERT(color_bytes == 2 || color_bytes == 4);
 	ASSERT(m_surface_cnt <= SURFACE_CNT_MAX);
 	memset(m_surface_group, 0, sizeof(m_surface_group));
 	
 	for (int i = 0; i < m_surface_cnt; i++)
-	{// Avoid new operation, new operation maybe crash program on Keil platform sometimes.
-		if (phy_fb)
-		{
-			c_surface tmp(this, surface_width, surface_height, color_bytes);
-			c_surface* surface = (c_surface*)malloc(sizeof(c_surface));
-			ASSERT(surface);
-			memcpy(surface, &tmp, sizeof(tmp));
-			m_surface_group[i] = surface;
-		}
-		else
-		{
-			c_surface_no_fb tmp(this, surface_width, surface_height, color_bytes, gfx_op);
-			c_surface_no_fb* surface = (c_surface_no_fb*)malloc(sizeof(c_surface_no_fb));
-			ASSERT(surface);
-			memcpy(surface, &tmp, sizeof(tmp));
-			m_surface_group[i] = surface;
-		}
+	{
+		m_surface_group[i] = (phy_fb) ? new c_surface(surface_width, surface_height, color_bytes) : new c_surface_no_fb(surface_width, surface_height, color_bytes, gfx_op);
+		m_surface_group[i]->attach_display(this);
 	}
 }
-inline c_surface* c_display::alloc_surface(Z_ORDER_LEVEL max_zorder)
+inline c_display::c_display(void* phy_fb, int display_width, int display_height, c_surface* surface) : m_width(display_width), m_height(display_height), m_phy_fb(phy_fb), m_phy_read_index(0), m_phy_write_index(0), m_surface_cnt(1), m_surface_index(0)
 {
-	if (max_zorder >= Z_ORDER_LEVEL_MAX || m_surface_index >= m_surface_cnt)
-	{
-		ASSERT(false);
-		return 0;
-	}
-	int i = m_surface_index++;
-	m_surface_group[i]->set_surface(max_zorder);
-	return m_surface_group[i];
+	m_color_bytes = surface->m_color_bytes;
+	surface->m_is_active = true;
+	(m_surface_group[0] = surface)->attach_display(this);
+}
+inline c_surface* c_display::alloc_surface(Z_ORDER_LEVEL max_zorder, c_rect layer_rect)
+{
+	ASSERT(max_zorder < Z_ORDER_LEVEL_MAX && m_surface_index < m_surface_cnt);
+	(layer_rect == c_rect()) ? m_surface_group[m_surface_index]->set_surface(max_zorder, c_rect(0, 0, m_width - 1, m_height - 1)) : m_surface_group[m_surface_index]->set_surface(max_zorder, layer_rect);
+	return m_surface_group[m_surface_index++];
 }
 inline int c_display::swipe_surface(c_surface* s0, c_surface* s1, int x0, int x1, int y0, int y1, int offset)
 {
@@ -1339,35 +1232,38 @@ class c_bitmap
 public:
 	static void draw_bitmap(c_surface* surface, int z_order, const BITMAP_INFO *pBitmap, int x, int y, unsigned int mask_rgb = DEFAULT_MASK_COLOR)
 	{
-		if (0 == pBitmap)
-		{
-			return;
-		}
-		unsigned short* lower_fb = 0;
-		int lower_fb_width = surface->m_width;
+		ASSERT(pBitmap);
+		unsigned short* lower_fb_16 = 0;
+		unsigned int* lower_fb_32 = 0;
+		int lower_fb_width = 0;
+		c_rect lower_fb_rect;
 		if (z_order >= Z_ORDER_LEVEL_1)
 		{
-			lower_fb = surface->m_frame_layers[z_order - 1].fb;
+			lower_fb_16 = (unsigned short*)surface->m_layers[z_order - 1].fb;
+			lower_fb_32 = (unsigned int*)surface->m_layers[z_order - 1].fb;
+			lower_fb_rect = surface->m_layers[z_order - 1].rect;
+			lower_fb_width = lower_fb_rect.width();
 		}
 		unsigned int mask_rgb_16 = GL_RGB_32_to_16(mask_rgb);
 		int xsize = pBitmap->width;
 		int ysize = pBitmap->height;
 		const unsigned short* pData = (const unsigned short*)pBitmap->pixel_color_array;
-		for (int j = 0; j < ysize; j++)
+		int color_bytes = surface->m_color_bytes;
+		for (int y_ = y; y_ < y + ysize; y_++)
 		{
-			for (int i = 0; i < xsize; i++)
+			for (int x_ = x; x_ < x + xsize; x_++)
 			{
 				unsigned int rgb = *pData++;
 				if (mask_rgb_16 == rgb)
 				{
-					if (lower_fb)
-					{//restore lower layer
-						surface->draw_pixel(x + i, y + j, GL_RGB_16_to_32(lower_fb[(y + j) * lower_fb_width + x + i]), z_order);
+					if (lower_fb_rect.pt_in_rect(x_, y_))
+					{//show lower layer
+						surface->draw_pixel(x_, y_, (color_bytes == 4) ? lower_fb_32[(y_ - lower_fb_rect.m_top) * lower_fb_width + (x_ - lower_fb_rect.m_left)] : GL_RGB_16_to_32(lower_fb_16[(y_ - lower_fb_rect.m_top) * lower_fb_width + (x_ - lower_fb_rect.m_left)]), z_order);
 					}
 				}
 				else
 				{
-					surface->draw_pixel(x + i, y + j, GL_RGB_16_to_32(rgb), z_order);
+					surface->draw_pixel(x_, y_, GL_RGB_16_to_32(rgb), z_order);
 				}
 			}
 		}
@@ -1378,30 +1274,36 @@ public:
 		{
 			return;
 		}
-		unsigned short* lower_fb = 0;
-		int lower_fb_width = surface->m_width;
+		unsigned short* lower_fb_16 = 0;
+		unsigned int* lower_fb_32 = 0;
+		int lower_fb_width = 0;
+		c_rect lower_fb_rect;
 		if (z_order >= Z_ORDER_LEVEL_1)
 		{
-			lower_fb = surface->m_frame_layers[z_order - 1].fb;
+			lower_fb_16 = (unsigned short*)surface->m_layers[z_order - 1].fb;
+			lower_fb_32 = (unsigned int*)surface->m_layers[z_order - 1].fb;
+			lower_fb_rect = surface->m_layers[z_order - 1].rect;
+			lower_fb_width = lower_fb_rect.width();
 		}
 		unsigned int mask_rgb_16 = GL_RGB_32_to_16(mask_rgb);
 		const unsigned short* pData = (const unsigned short*)pBitmap->pixel_color_array;
-		for (int j = 0; j < height; j++)
+		int color_bytes = surface->m_color_bytes;
+		for (int y_ = 0; y_ < height; y_++)
 		{
-			const unsigned short* p = &pData[src_x + (src_y + j) * pBitmap->width];
-			for (int i = 0; i < width; i++)
+			const unsigned short* p = &pData[src_x + (src_y + y_) * pBitmap->width];
+			for (int x_ = 0; x_ < width; x_++)
 			{
 				unsigned int rgb = *p++;
 				if (mask_rgb_16 == rgb)
 				{
-					if (lower_fb)
-					{//restore lower layer
-						surface->draw_pixel(x + i, y + j, GL_RGB_16_to_32(lower_fb[(y + j) * lower_fb_width + x + i]), z_order);
+					if (lower_fb_rect.pt_in_rect(x + x_, y + y_))
+					{//show lower layer
+						surface->draw_pixel(x + x_, y + y_, (color_bytes == 4) ? lower_fb_32[(y + y_ - lower_fb_rect.m_top) * lower_fb_width + x + x_ - lower_fb_rect.m_left] : GL_RGB_16_to_32(lower_fb_16[(y + y_ - lower_fb_rect.m_top) * lower_fb_width + x + x_ - lower_fb_rect.m_left]), z_order);
 					}
 				}
 				else
 				{
-					surface->draw_pixel(x + i, y + j, GL_RGB_16_to_32(rgb), z_order);
+					surface->draw_pixel(x + x_, y + y_, GL_RGB_16_to_32(rgb), z_order);
 				}
 			}
 		}
@@ -1429,10 +1331,10 @@ typedef enum
 }WND_STATUS;
 typedef enum
 {
-	KEY_FORWARD,
-	KEY_BACKWARD,
-	KEY_ENTER
-}KEY_TYPE;
+	NAV_FORWARD,
+	NAV_BACKWARD,
+	NAV_ENTER
+}NAVIGATION_KEY;
 typedef enum
 {
 	TOUCH_DOWN,
@@ -1575,8 +1477,10 @@ public:
 	void get_wnd_rect(c_rect &rect) const {	rect = m_wnd_rect; }
 	void get_screen_rect(c_rect &rect) const
 	{
-		rect.SetRect(0, 0, (m_wnd_rect.Width() - 1), (m_wnd_rect.Height() - 1));
-		wnd2screen(rect);
+		int l = 0;
+		int t = 0;
+		wnd2screen(l, t);
+		rect.set_rect(l, t, m_wnd_rect.width(), m_wnd_rect.height());
 	}
 	c_wnd* set_child_focus(c_wnd *focus_child)
 	{
@@ -1682,23 +1586,23 @@ public:
 	}
 	virtual void on_touch(int x, int y, TOUCH_ACTION action)
 	{
-		c_wnd* model_wnd = 0;
+		x -= m_wnd_rect.m_left;
+		y -= m_wnd_rect.m_top;
+		c_wnd* priority_wnd = 0;
 		c_wnd* tmp_child = m_top_child;
 		while (tmp_child)
 		{
 			if ((tmp_child->m_attr & ATTR_PRIORITY) && (tmp_child->m_attr & ATTR_VISIBLE))
 			{
-				model_wnd = tmp_child;
+				priority_wnd = tmp_child;
 				break;
 			}
 			tmp_child = tmp_child->m_next_sibling;
 		}
-		if (model_wnd)
+		if (priority_wnd)
 		{
-			return model_wnd->on_touch(x, y, action);
+			return priority_wnd->on_touch(x, y, action);
 		}
-		x -= m_wnd_rect.m_left;
-		y -= m_wnd_rect.m_top;
 		c_wnd* child = m_top_child;
 		while (child)
 		{
@@ -1706,7 +1610,7 @@ public:
 			{
 				c_rect rect;
 				child->get_wnd_rect(rect);
-				if (true == rect.PtInRect(x, y))
+				if (true == rect.pt_in_rect(x, y))
 				{
 					return child->on_touch(x, y, action);
 				}
@@ -1714,32 +1618,32 @@ public:
 			child = child->m_next_sibling;
 		}
 	}
-	virtual void on_key(KEY_TYPE key)
+	virtual void on_navigate(NAVIGATION_KEY key)
 	{
-		c_wnd* model_wnd = 0;
+		c_wnd* priority_wnd = 0;
 		c_wnd* tmp_child = m_top_child;
 		while (tmp_child)
 		{
 			if ((tmp_child->m_attr & ATTR_PRIORITY) && (tmp_child->m_attr & ATTR_VISIBLE))
 			{
-				model_wnd = tmp_child;
+				priority_wnd = tmp_child;
 				break;
 			}
 			tmp_child = tmp_child->m_next_sibling;
 		}
-		if (model_wnd)
+		if (priority_wnd)
 		{
-			return model_wnd->on_key(key);
+			return priority_wnd->on_navigate(key);
 		}
 		if (!is_focus_wnd())
 		{
 			return;
 		}
-		if (key != KEY_BACKWARD && key != KEY_FORWARD)
+		if (key != NAV_BACKWARD && key != NAV_FORWARD)
 		{
 			if (m_focus_child)
 			{
-				m_focus_child->on_key(key);
+				m_focus_child->on_navigate(key);
 			}
 			return;
 		}
@@ -1764,17 +1668,17 @@ public:
 			return;
 		}
 		// Move focus from old wnd to next wnd
-		c_wnd* next_focus_wnd = (key == KEY_FORWARD) ? old_focus_wnd->m_next_sibling : old_focus_wnd->m_prev_sibling;
+		c_wnd* next_focus_wnd = (key == NAV_FORWARD) ? old_focus_wnd->m_next_sibling : old_focus_wnd->m_prev_sibling;
 		while (next_focus_wnd && (!next_focus_wnd->is_focus_wnd()))
 		{// Search neighbor of old focus wnd
-			next_focus_wnd = (key == KEY_FORWARD) ? next_focus_wnd->m_next_sibling : next_focus_wnd->m_prev_sibling;
+			next_focus_wnd = (key == NAV_FORWARD) ? next_focus_wnd->m_next_sibling : next_focus_wnd->m_prev_sibling;
 		}
 		if (!next_focus_wnd)
 		{// Search whole brother wnd
-			next_focus_wnd = (key == KEY_FORWARD) ? old_focus_wnd->m_parent->m_top_child : old_focus_wnd->m_parent->get_last_child();
+			next_focus_wnd = (key == NAV_FORWARD) ? old_focus_wnd->m_parent->m_top_child : old_focus_wnd->m_parent->get_last_child();
 			while (next_focus_wnd && (!next_focus_wnd->is_focus_wnd()))
 			{
-				next_focus_wnd = (key == KEY_FORWARD) ? next_focus_wnd->m_next_sibling : next_focus_wnd->m_prev_sibling;
+				next_focus_wnd = (key == NAV_FORWARD) ? next_focus_wnd->m_next_sibling : next_focus_wnd->m_prev_sibling;
 			}
 		}
 		if (next_focus_wnd)
@@ -1821,15 +1725,6 @@ protected:
 			y += rect.m_top;
 			parent = parent->m_parent;
 		}
-	}
-	void wnd2screen(c_rect &rect) const
-	{
-		int l = rect.m_left;
-		int t = rect.m_top;
-		wnd2screen(l, t);
-		int r = (l + rect.Width() - 1);
-		int b = (t + rect.Height() - 1);
-		rect.SetRect(l, t, r, b);
 	}
 	int load_child_wnd(WND_TREE *p_child_tree)
 	{
@@ -1969,19 +1864,19 @@ protected:
 			notify_parent(GL_BN_CLICKED, 0);
 		}
 	}
-	virtual void on_key(KEY_TYPE key)
+	virtual void on_navigate(NAVIGATION_KEY key)
 	{
 		switch (key)
 		{
-		case KEY_ENTER:
+		case NAV_ENTER:
 			on_touch(m_wnd_rect.m_left, m_wnd_rect.m_top, TOUCH_DOWN);
 			on_touch(m_wnd_rect.m_left, m_wnd_rect.m_top, TOUCH_UP);
 			break;
-		case KEY_FORWARD:
-		case KEY_BACKWARD:
+		case NAV_FORWARD:
+		case NAV_BACKWARD:
 			break;
 		}
-		return c_wnd::on_key(key);
+		return c_wnd::on_navigate(key);
 	}
 };
 #endif
@@ -2013,9 +1908,6 @@ public:
 		{
 			cur_dlg->set_attr(WND_ATTRIBUTION(0));
 		}
-		c_rect rc;
-		p_dlg->get_screen_rect(rc);
-		p_dlg->get_surface()->set_frame_layer_visible_rect(rc, Z_ORDER_LEVEL_1);
 		p_dlg->set_attr(modal_mode ? (WND_ATTRIBUTION)(ATTR_VISIBLE | ATTR_FOCUS | ATTR_PRIORITY) : (WND_ATTRIBUTION)(ATTR_VISIBLE | ATTR_FOCUS));
 		p_dlg->show_window();
 		p_dlg->set_me_the_dialog();
@@ -2029,8 +1921,9 @@ public:
 			return 0;
 		}
 		c_rect rc;
+		dlg->get_screen_rect(rc);
 		dlg->set_attr(WND_ATTRIBUTION(0));
-		surface->set_frame_layer_visible_rect(rc, dlg->m_z_order);
+		surface->show_layer(rc, dlg->m_z_order -  1);
 		//clear the dialog
 		for (int i = 0; i < SURFACE_CNT_MAX; i++)
 		{
@@ -2149,11 +2042,11 @@ public:
 		{//Place keyboard at the bottom of user's parent window.
 			c_rect user_parent_rect;
 			user->get_parent()->get_wnd_rect(user_parent_rect);
-			return c_wnd::connect(user, resource_id, 0, (0 - user_rect.m_left), (user_parent_rect.Height() - user_rect.m_top - KEYBOARD_HEIGHT), KEYBOARD_WIDTH, KEYBOARD_HEIGHT, g_key_board_children);
+			return c_wnd::connect(user, resource_id, 0, (0 - user_rect.m_left), (user_parent_rect.height() - user_rect.m_top - KEYBOARD_HEIGHT - 1), KEYBOARD_WIDTH, KEYBOARD_HEIGHT, g_key_board_children);
 		}
 		else if (style == STYLE_NUM_BOARD)
 		{//Place keyboard below the user window.
-			return c_wnd::connect(user, resource_id, 0, 0, user_rect.Height(), NUM_BOARD_WIDTH, NUM_BOARD_HEIGHT, g_number_board_children);
+			return c_wnd::connect(user, resource_id, 0, 0, user_rect.height(), NUM_BOARD_WIDTH, NUM_BOARD_HEIGHT, g_number_board_children);
 		}
 		else
 		{
@@ -2347,18 +2240,17 @@ protected:
 	}
 	virtual void on_paint()
 	{
-		c_rect rect;
+		c_rect rect, kb_rect;
 		get_screen_rect(rect);
-		c_rect empty_rect;
-		empty_rect.Empty();
+		s_keyboard.get_screen_rect(kb_rect);
 		switch (m_status)
 		{
 		case STATUS_NORMAL:
 			if (m_z_order > m_parent->get_z_order())
 			{
 				s_keyboard.disconnect();
-				m_surface->set_frame_layer_visible_rect(empty_rect, s_keyboard.get_z_order());
 				m_z_order = m_parent->get_z_order();
+				m_surface->show_layer(kb_rect, m_z_order);
 				m_attr = (WND_ATTRIBUTION)(ATTR_VISIBLE | ATTR_FOCUS);
 			}
 			m_surface->fill_rect(rect, c_theme::get_color(COLOR_WND_NORMAL), m_z_order);
@@ -2368,8 +2260,8 @@ protected:
 			if (m_z_order > m_parent->get_z_order())
 			{
 				s_keyboard.disconnect();
-				m_surface->set_frame_layer_visible_rect(empty_rect, s_keyboard.get_z_order());
 				m_z_order = m_parent->get_z_order();
+				m_surface->show_layer(kb_rect, m_z_order);
 				m_attr = (WND_ATTRIBUTION)(ATTR_VISIBLE | ATTR_FOCUS);
 			}
 			m_surface->fill_rect(rect, c_theme::get_color(COLOR_WND_FOCUS), m_z_order);
@@ -2401,16 +2293,16 @@ protected:
 		m_status = STATUS_NORMAL;
 		on_paint();
 	}
-	virtual void on_key(KEY_TYPE key)
+	virtual void on_navigate(NAVIGATION_KEY key)
 	{
 		switch (key)
 		{
-		case KEY_ENTER:
-			(m_status == STATUS_PUSHED) ? s_keyboard.on_key(key) : (on_touch(m_wnd_rect.m_left, m_wnd_rect.m_top, TOUCH_DOWN), on_touch(m_wnd_rect.m_left, m_wnd_rect.m_top, TOUCH_UP));
+		case NAV_ENTER:
+			(m_status == STATUS_PUSHED) ? s_keyboard.on_navigate(key) : (on_touch(m_wnd_rect.m_left, m_wnd_rect.m_top, TOUCH_DOWN), on_touch(m_wnd_rect.m_left, m_wnd_rect.m_top, TOUCH_UP));
 			return;
-		case KEY_BACKWARD:
-		case KEY_FORWARD:
-			return (m_status == STATUS_PUSHED) ? s_keyboard.on_key(key) : c_wnd::on_key(key);
+		case NAV_BACKWARD:
+		case NAV_FORWARD:
+			return (m_status == STATUS_PUSHED) ? s_keyboard.on_navigate(key) : c_wnd::on_navigate(key);
 		}
 	}
 	virtual void on_touch(int x, int y, TOUCH_ACTION action)
@@ -2448,9 +2340,6 @@ private:
 	void show_keyboard()
 	{
 		s_keyboard.connect(this, IDD_KEY_BOARD, m_kb_style);
-		c_rect kb_rect;
-		s_keyboard.get_screen_rect(kb_rect);
-		m_surface->set_frame_layer_visible_rect(kb_rect, s_keyboard.get_z_order());
 		s_keyboard.show_window();
 	}
 	void on_touch_down(int x, int y)
@@ -2461,14 +2350,14 @@ private:
 		kb_rect_relate_2_edit_parent.m_right += m_wnd_rect.m_left;
 		kb_rect_relate_2_edit_parent.m_top += m_wnd_rect.m_top;
 		kb_rect_relate_2_edit_parent.m_bottom += m_wnd_rect.m_top;
-		if (m_wnd_rect.PtInRect(x, y))
+		if (m_wnd_rect.pt_in_rect(x, y))
 		{//click edit box
 			if (STATUS_NORMAL == m_status)
 			{
 				m_parent->set_child_focus(this);
 			}
 		}
-		else if (kb_rect_relate_2_edit_parent.PtInRect(x, y))
+		else if (kb_rect_relate_2_edit_parent.pt_in_rect(x, y))
 		{//click key board
 			c_wnd::on_touch(x, y, TOUCH_DOWN);
 		}
@@ -2490,7 +2379,7 @@ private:
 		}
 		else if (STATUS_PUSHED == m_status)
 		{
-			if (m_wnd_rect.PtInRect(x, y))
+			if (m_wnd_rect.pt_in_rect(x, y))
 			{//click edit box
 				m_status = STATUS_FOCUSED;
 				on_paint();
@@ -2581,15 +2470,15 @@ protected:
 	}
 	virtual void on_paint()
 	{
-		c_rect rect, empty_rect;
+		c_rect rect;
 		get_screen_rect(rect);
 		switch (m_status)
 		{
 		case STATUS_NORMAL:
 			if (m_z_order > m_parent->get_z_order())
 			{
-				m_surface->set_frame_layer_visible_rect(empty_rect, m_z_order);
 				m_z_order = m_parent->get_z_order();
+				m_surface->show_layer(m_list_screen_rect, m_z_order);
 				m_attr = (WND_ATTRIBUTION)(ATTR_VISIBLE | ATTR_FOCUS);
 			}
 			m_surface->fill_rect(rect, c_theme::get_color(COLOR_WND_NORMAL), m_z_order);
@@ -2598,8 +2487,8 @@ protected:
 		case STATUS_FOCUSED:
 			if (m_z_order > m_parent->get_z_order())
 			{
-				m_surface->set_frame_layer_visible_rect(empty_rect, m_z_order);
 				m_z_order = m_parent->get_z_order();
+				m_surface->show_layer(m_list_screen_rect, m_z_order);
 				m_attr = (WND_ATTRIBUTION)(ATTR_VISIBLE | ATTR_FOCUS);
 			}
 			m_surface->fill_rect(rect, c_theme::get_color(COLOR_WND_FOCUS), m_z_order);
@@ -2616,7 +2505,6 @@ protected:
 				{
 					m_z_order++;
 				}
-				m_surface->set_frame_layer_visible_rect(m_list_screen_rect, m_z_order);
 				m_attr = (WND_ATTRIBUTION)(ATTR_VISIBLE | ATTR_FOCUS | ATTR_PRIORITY);
 				show_list();
 			}
@@ -2635,25 +2523,25 @@ protected:
 		m_status = STATUS_NORMAL;
 		on_paint();
 	}
-	virtual void on_key(KEY_TYPE key)
+	virtual void on_navigate(NAVIGATION_KEY key)
 	{
 		switch (key)
 		{
-		case KEY_ENTER:
+		case NAV_ENTER:
 			on_touch(m_wnd_rect.m_left, m_wnd_rect.m_top, TOUCH_DOWN);
 			on_touch(m_wnd_rect.m_left, m_wnd_rect.m_top, TOUCH_UP);
 			return;
-		case KEY_BACKWARD:
+		case NAV_BACKWARD:
 			if (m_status != STATUS_PUSHED)
 			{
-				return c_wnd::on_key(key);
+				return c_wnd::on_navigate(key);
 			}
 			m_selected_item = (m_selected_item > 0) ? (m_selected_item - 1) : m_selected_item;
 			return show_list();
-		case KEY_FORWARD:
+		case NAV_FORWARD:
 			if (m_status != STATUS_PUSHED)
 			{
-				return c_wnd::on_key(key);
+				return c_wnd::on_navigate(key);
 			}
 			m_selected_item = (m_selected_item < (m_item_total - 1)) ? (m_selected_item + 1) : m_selected_item;
 			return show_list();
@@ -2698,14 +2586,14 @@ private:
 	}
 	void on_touch_down(int x, int y)
 	{
-		if (m_wnd_rect.PtInRect(x, y))
+		if (m_wnd_rect.pt_in_rect(x, y))
 		{//click base
 			if (STATUS_NORMAL == m_status)
 			{
 				m_parent->set_child_focus(this);
 			}
 		}
-		else if (m_list_wnd_rect.PtInRect(x, y))
+		else if (m_list_wnd_rect.pt_in_rect(x, y))
 		{//click extend list
 			c_wnd::on_touch(x, y, TOUCH_DOWN);
 		}
@@ -2728,12 +2616,12 @@ private:
 		}
 		else if (STATUS_PUSHED == m_status)
 		{
-			if (m_wnd_rect.PtInRect(x, y))
+			if (m_wnd_rect.pt_in_rect(x, y))
 			{//click base
 				m_status = STATUS_FOCUSED;
 				on_paint();
 			}
-			else if (m_list_wnd_rect.PtInRect(x, y))
+			else if (m_list_wnd_rect.pt_in_rect(x, y))
 			{//click extend list
 				m_status = STATUS_FOCUSED;
 				select_item((y - m_list_wnd_rect.m_top) / ITEM_HEIGHT);
@@ -2848,11 +2736,11 @@ public:
 		}
 	}
 	inline virtual void on_touch(int x, int y, TOUCH_ACTION action);
-	virtual void on_key(KEY_TYPE key)
+	virtual void on_navigate(NAVIGATION_KEY key)
 	{
 		if (m_slides[m_active_slide_index])
 		{
-			m_slides[m_active_slide_index]->on_key(key);
+			m_slides[m_active_slide_index]->on_navigate(key);
 		}
 	}
 protected:
@@ -2982,14 +2870,14 @@ private:
 		int step = m_down_x - m_move_x;
 		c_rect rc;
 		m_slide_group->get_screen_rect(rc);
-		while (step < rc.Width())
+		while (step < rc.width())
 		{
 			s1->get_display()->swipe_surface(s2, s1, rc.m_left, rc.m_right, rc.m_top, rc.m_bottom, step);
 			step += SWIPE_STEP;
 		}
-		if (step != rc.Width())
+		if (step != rc.width())
 		{
-			s1->get_display()->swipe_surface(s2, s1, rc.m_left, rc.m_right, rc.m_top, rc.m_bottom, rc.Width());
+			s1->get_display()->swipe_surface(s2, s1, rc.m_left, rc.m_right, rc.m_top, rc.m_bottom, rc.width());
 		}
 		return (index + 1);
 	}
@@ -3014,7 +2902,7 @@ private:
 		}
 		c_rect rc;
 		m_slide_group->get_screen_rect(rc);
-		int step = rc.Width() - (m_move_x - m_down_x);
+		int step = rc.width() - (m_move_x - m_down_x);
 		while (step > 0)
 		{
 			s1->get_display()->swipe_surface(s1, s2, rc.m_left, rc.m_right, rc.m_top, rc.m_bottom, step);
@@ -3059,7 +2947,7 @@ private:
 		m_slide_group->get_screen_rect(rc);
 		if (s1->get_display() == s2->get_display())
 		{
-			s1->get_display()->swipe_surface(s1, s2, rc.m_left, rc.m_right, rc.m_top, rc.m_bottom, (rc.Width() - (m_move_x - m_down_x)));
+			s1->get_display()->swipe_surface(s1, s2, rc.m_left, rc.m_right, rc.m_top, rc.m_bottom, (rc.width() - (m_move_x - m_down_x)));
 		}
 	}
 	int m_down_x;
@@ -3093,7 +2981,6 @@ inline void c_slide_group::on_touch(int x, int y, TOUCH_ACTION action)
 #endif
 #ifndef GUILITE_WIDGETS_INCLUDE_SPINBOX_H
 #define GUILITE_WIDGETS_INCLUDE_SPINBOX_H
-#define ARROW_BT_WIDTH		55
 #define ID_BT_ARROW_UP      0x1111
 #define ID_BT_ARROW_DOWN    0x2222
 #define	GL_SPIN_CHANGE		0x3333
@@ -3124,6 +3011,7 @@ protected:
 	{
 		c_rect rect;
 		get_screen_rect(rect);
+		rect.m_right = rect.m_left + (rect.width() * 2 / 3);
 		m_surface->fill_rect(rect, c_theme::get_color(COLOR_WND_NORMAL), m_z_order);
 		c_word::draw_value_in_rect(m_surface, m_parent->get_z_order(), m_cur_value, m_digit, rect, m_font_type, m_font_color, c_theme::get_color(COLOR_WND_NORMAL), ALIGN_HCENTER | ALIGN_VCENTER);
 	}
@@ -3138,10 +3026,10 @@ protected:
 		m_step = 1;
 		//link arrow button position.
 		c_rect rect;
-		get_screen_rect(rect);
+		get_wnd_rect(rect);
 		m_bt_down.m_spin_box = m_bt_up.m_spin_box = this;
-		m_bt_down.connect(m_parent, ID_BT_ARROW_DOWN, "-", rect.m_left - ARROW_BT_WIDTH, rect.m_top, ARROW_BT_WIDTH, rect.Height());
-		m_bt_up.connect(m_parent, ID_BT_ARROW_UP, "+", rect.m_right, rect.m_top, ARROW_BT_WIDTH, rect.Height());
+		m_bt_up.connect(m_parent, ID_BT_ARROW_UP, "+", (rect.m_left + rect.width() * 2 / 3), rect.m_top, (rect.width() / 3), (rect.height() / 2));
+		m_bt_down.connect(m_parent, ID_BT_ARROW_DOWN, "-", (rect.m_left + rect.width() * 2 / 3), (rect.m_top + rect.height() / 2), (rect.width() / 3), (rect.height() / 2));
 	}
 	void on_arrow_up_bt_click()
 	{
@@ -3290,8 +3178,6 @@ protected:
 #define WAVE_READ_CACHE_LEN	8
 #define BUFFER_EMPTY	-1111
 #define BUFFER_FULL		-2222;
-#define MAX(a,b) (((a)>(b))?(a):(b))
-#define MIN(a,b) (((a)<(b))?(a):(b))
 class c_wave_buffer
 {
 public:
@@ -3438,13 +3324,13 @@ public:
 		m_wave_top = rect.m_top + WAVE_MARGIN;
 		m_wave_bottom = rect.m_bottom - WAVE_MARGIN;
 		m_wave_cursor = m_wave_left;
-		m_bg_fb = (unsigned int*)calloc(rect.Width() * rect.Height(), 4);
+		m_bg_fb = (unsigned int*)calloc(rect.width() * rect.height(), 4);
 	}
 	virtual void on_paint()
 	{
 		c_rect rect;
 		get_screen_rect(rect);
-		m_surface->fill_rect(rect.m_left, rect.m_top, rect.m_right, rect.m_bottom, m_back_color, m_z_order);
+		m_surface->fill_rect(rect, m_back_color, m_z_order);
 		//show name
 		c_word::draw_string(m_surface, m_z_order, m_wave_name, m_wave_left + 10, rect.m_top, m_wave_name_font, m_wave_name_color, GL_ARGB(0, 0, 0, 0), ALIGN_LEFT);
 		//show unit
@@ -3588,7 +3474,7 @@ protected:
 		}
 		c_rect rect;
 		get_screen_rect(rect);
-		register int width = rect.Width();
+		register int width = rect.width();
 		register int top = rect.m_top;
 		register int left = rect.m_left;
 		for (int y_pos = (m_wave_top - 1); y_pos <= (m_wave_bottom + 1); y_pos++)

@@ -2,7 +2,6 @@
 #define GUILITE_WIDGETS_INCLUDE_DIALOG_H
 
 #include "../core_include/api.h"
-#include "../core_include/rect.h"
 #include "../core_include/cmd_target.h"
 #include "../core_include/wnd.h"
 #include "../core_include/display.h"
@@ -40,10 +39,6 @@ public:
 			cur_dlg->set_attr(WND_ATTRIBUTION(0));
 		}
 
-		c_rect rc;
-		p_dlg->get_screen_rect(rc);
-		p_dlg->get_surface()->set_frame_layer_visible_rect(rc, Z_ORDER_LEVEL_1);
-
 		p_dlg->set_attr(modal_mode ? (WND_ATTRIBUTION)(ATTR_VISIBLE | ATTR_FOCUS | ATTR_PRIORITY) : (WND_ATTRIBUTION)(ATTR_VISIBLE | ATTR_FOCUS));
 		p_dlg->show_window();
 		p_dlg->set_me_the_dialog();
@@ -59,9 +54,9 @@ public:
 			return 0;
 		}
 		c_rect rc;
-
+		dlg->get_screen_rect(rc);
 		dlg->set_attr(WND_ATTRIBUTION(0));
-		surface->set_frame_layer_visible_rect(rc, dlg->m_z_order);
+		surface->show_layer(rc, dlg->m_z_order -  1);
 
 		//clear the dialog
 		for (int i = 0; i < SURFACE_CNT_MAX; i++)

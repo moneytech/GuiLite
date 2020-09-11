@@ -1,10 +1,8 @@
-./.sync.sh GuiLite-header
-
 echo "Build header-only library: GuiLite.h"
 
 # build GuiLiteRaw.h
 cd core_include
-cat api.h cmd_target.h rect.h resource.h theme.h display.h word.h bitmap.h wnd.h audio.h > core.h
+cat api.h cmd_target.h resource.h theme.h display.h word.h bitmap.h wnd.h audio.h > core.h
 mv core.h ../
 
 cd ../widgets_include
@@ -55,3 +53,4 @@ mv GuiLite.h ../
 
 echo "Done!"
 echo "You could find GuiLite.h in root folder"
+./.sync.sh GuiLite-header

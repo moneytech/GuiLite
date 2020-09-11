@@ -2,7 +2,6 @@
 #define GUILITE_WIDGETS_INCLUDE_LIST_BOX_H
 
 #include "../core_include/api.h"
-#include "../core_include/rect.h"
 #include "../core_include/cmd_target.h"
 #include "../core_include/resource.h"
 #include "../core_include/wnd.h"
@@ -16,8 +15,7 @@
 #define MAX_ITEM_NUM			4
 #define GL_LIST_CONFIRM			0x1
 #define ITEM_HEIGHT				45
-#define ON_LIST_CONFIRM(func) \
-{MSG_TYPE_WND, GL_LIST_CONFIRM, 0, msgCallback(&func)},
+#define ON_LIST_CONFIRM(func)	{MSG_TYPE_WND, GL_LIST_CONFIRM, 0, msgCallback(&func)},
 
 class c_list_box : public c_wnd
 {
@@ -62,7 +60,7 @@ protected:
 
 	virtual void on_paint()
 	{
-		c_rect rect, empty_rect;
+		c_rect rect;
 		get_screen_rect(rect);
 
 		switch (m_status)
@@ -70,8 +68,8 @@ protected:
 		case STATUS_NORMAL:
 			if (m_z_order > m_parent->get_z_order())
 			{
-				m_surface->set_frame_layer_visible_rect(empty_rect, m_z_order);
 				m_z_order = m_parent->get_z_order();
+				m_surface->show_layer(m_list_screen_rect, m_z_order);
 				m_attr = (WND_ATTRIBUTION)(ATTR_VISIBLE | ATTR_FOCUS);
 			}
 			m_surface->fill_rect(rect, c_theme::get_color(COLOR_WND_NORMAL), m_z_order);
@@ -80,8 +78,8 @@ protected:
 		case STATUS_FOCUSED:
 			if (m_z_order > m_parent->get_z_order())
 			{
-				m_surface->set_frame_layer_visible_rect(empty_rect, m_z_order);
 				m_z_order = m_parent->get_z_order();
+				m_surface->show_layer(m_list_screen_rect, m_z_order);
 				m_attr = (WND_ATTRIBUTION)(ATTR_VISIBLE | ATTR_FOCUS);
 			}
 			m_surface->fill_rect(rect, c_theme::get_color(COLOR_WND_FOCUS), m_z_order);
@@ -98,7 +96,6 @@ protected:
 				{
 					m_z_order++;
 				}
-				m_surface->set_frame_layer_visible_rect(m_list_screen_rect, m_z_order);
 				m_attr = (WND_ATTRIBUTION)(ATTR_VISIBLE | ATTR_FOCUS | ATTR_PRIORITY);
 				show_list();
 			}
@@ -117,25 +114,25 @@ protected:
 		m_status = STATUS_NORMAL;
 		on_paint();
 	}
-	virtual void on_key(KEY_TYPE key)
+	virtual void on_navigate(NAVIGATION_KEY key)
 	{
 		switch (key)
 		{
-		case KEY_ENTER:
+		case NAV_ENTER:
 			on_touch(m_wnd_rect.m_left, m_wnd_rect.m_top, TOUCH_DOWN);
 			on_touch(m_wnd_rect.m_left, m_wnd_rect.m_top, TOUCH_UP);
 			return;
-		case KEY_BACKWARD:
+		case NAV_BACKWARD:
 			if (m_status != STATUS_PUSHED)
 			{
-				return c_wnd::on_key(key);
+				return c_wnd::on_navigate(key);
 			}
 			m_selected_item = (m_selected_item > 0) ? (m_selected_item - 1) : m_selected_item;
 			return show_list();
-		case KEY_FORWARD:
+		case NAV_FORWARD:
 			if (m_status != STATUS_PUSHED)
 			{
-				return c_wnd::on_key(key);
+				return c_wnd::on_navigate(key);
 			}
 			m_selected_item = (m_selected_item < (m_item_total - 1)) ? (m_selected_item + 1) : m_selected_item;
 			return show_list();
@@ -182,14 +179,14 @@ private:
 	}
 	void on_touch_down(int x, int y)
 	{
-		if (m_wnd_rect.PtInRect(x, y))
+		if (m_wnd_rect.pt_in_rect(x, y))
 		{//click base
 			if (STATUS_NORMAL == m_status)
 			{
 				m_parent->set_child_focus(this);
 			}
 		}
-		else if (m_list_wnd_rect.PtInRect(x, y))
+		else if (m_list_wnd_rect.pt_in_rect(x, y))
 		{//click extend list
 			c_wnd::on_touch(x, y, TOUCH_DOWN);
 		}
@@ -212,12 +209,12 @@ private:
 		}
 		else if (STATUS_PUSHED == m_status)
 		{
-			if (m_wnd_rect.PtInRect(x, y))
+			if (m_wnd_rect.pt_in_rect(x, y))
 			{//click base
 				m_status = STATUS_FOCUSED;
 				on_paint();
 			}
-			else if (m_list_wnd_rect.PtInRect(x, y))
+			else if (m_list_wnd_rect.pt_in_rect(x, y))
 			{//click extend list
 				m_status = STATUS_FOCUSED;
 				select_item((y - m_list_wnd_rect.m_top) / ITEM_HEIGHT);

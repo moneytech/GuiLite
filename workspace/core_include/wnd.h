@@ -2,7 +2,6 @@
 #define GUILITE_CORE_INCLUDE_WND_H
 
 #include "../core_include/api.h"
-#include "../core_include/rect.h"
 #include "../core_include/cmd_target.h"
 #include "../core_include/resource.h"
 #include "../core_include/bitmap.h"
@@ -31,10 +30,10 @@ typedef enum
 
 typedef enum
 {
-	KEY_FORWARD,
-	KEY_BACKWARD,
-	KEY_ENTER
-}KEY_TYPE;
+	NAV_FORWARD,
+	NAV_BACKWARD,
+	NAV_ENTER
+}NAVIGATION_KEY;
 
 typedef enum
 {
@@ -44,14 +43,14 @@ typedef enum
 
 typedef struct struct_wnd_tree
 {
-	c_wnd*					p_wnd;
-	unsigned int			resource_id;
-	const char*				str;
-	short   				x;
-	short   				y;
+	c_wnd*					p_wnd;//window instance
+	unsigned int			resource_id;//ID
+	const char*				str;//caption
+	short   				x;//position x
+	short   				y;//position y
 	short   				width;
 	short        			height;
-	struct struct_wnd_tree*	p_child_tree;
+	struct struct_wnd_tree*	p_child_tree;//sub tree
 }WND_TREE;
 
 class c_wnd : public c_cmd_target
@@ -196,8 +195,10 @@ public:
 	void get_wnd_rect(c_rect &rect) const {	rect = m_wnd_rect; }
 	void get_screen_rect(c_rect &rect) const
 	{
-		rect.SetRect(0, 0, (m_wnd_rect.Width() - 1), (m_wnd_rect.Height() - 1));
-		wnd2screen(rect);
+		int l = 0;
+		int t = 0;
+		wnd2screen(l, t);
+		rect.set_rect(l, t, m_wnd_rect.width(), m_wnd_rect.height());
 	}
 
 	c_wnd* set_child_focus(c_wnd *focus_child)
@@ -319,24 +320,25 @@ public:
 
 	virtual void on_touch(int x, int y, TOUCH_ACTION action)
 	{
-		c_wnd* model_wnd = 0;
+		x -= m_wnd_rect.m_left;
+		y -= m_wnd_rect.m_top;
+
+		c_wnd* priority_wnd = 0;
 		c_wnd* tmp_child = m_top_child;
 		while (tmp_child)
 		{
 			if ((tmp_child->m_attr & ATTR_PRIORITY) && (tmp_child->m_attr & ATTR_VISIBLE))
 			{
-				model_wnd = tmp_child;
+				priority_wnd = tmp_child;
 				break;
 			}
 			tmp_child = tmp_child->m_next_sibling;
 		}
-		if (model_wnd)
+		if (priority_wnd)
 		{
-			return model_wnd->on_touch(x, y, action);
+			return priority_wnd->on_touch(x, y, action);
 		}
 
-		x -= m_wnd_rect.m_left;
-		y -= m_wnd_rect.m_top;
 		c_wnd* child = m_top_child;
 		while (child)
 		{
@@ -344,7 +346,7 @@ public:
 			{
 				c_rect rect;
 				child->get_wnd_rect(rect);
-				if (true == rect.PtInRect(x, y))
+				if (true == rect.pt_in_rect(x, y))
 				{
 					return child->on_touch(x, y, action);
 				}
@@ -352,33 +354,33 @@ public:
 			child = child->m_next_sibling;
 		}
 	}
-	virtual void on_key(KEY_TYPE key)
+	virtual void on_navigate(NAVIGATION_KEY key)
 	{
-		c_wnd* model_wnd = 0;
+		c_wnd* priority_wnd = 0;
 		c_wnd* tmp_child = m_top_child;
 		while (tmp_child)
 		{
 			if ((tmp_child->m_attr & ATTR_PRIORITY) && (tmp_child->m_attr & ATTR_VISIBLE))
 			{
-				model_wnd = tmp_child;
+				priority_wnd = tmp_child;
 				break;
 			}
 			tmp_child = tmp_child->m_next_sibling;
 		}
-		if (model_wnd)
+		if (priority_wnd)
 		{
-			return model_wnd->on_key(key);
+			return priority_wnd->on_navigate(key);
 		}
 
 		if (!is_focus_wnd())
 		{
 			return;
 		}
-		if (key != KEY_BACKWARD && key != KEY_FORWARD)
+		if (key != NAV_BACKWARD && key != NAV_FORWARD)
 		{
 			if (m_focus_child)
 			{
-				m_focus_child->on_key(key);
+				m_focus_child->on_navigate(key);
 			}
 			return;
 		}
@@ -404,17 +406,17 @@ public:
 			return;
 		}
 		// Move focus from old wnd to next wnd
-		c_wnd* next_focus_wnd = (key == KEY_FORWARD) ? old_focus_wnd->m_next_sibling : old_focus_wnd->m_prev_sibling;
+		c_wnd* next_focus_wnd = (key == NAV_FORWARD) ? old_focus_wnd->m_next_sibling : old_focus_wnd->m_prev_sibling;
 		while (next_focus_wnd && (!next_focus_wnd->is_focus_wnd()))
 		{// Search neighbor of old focus wnd
-			next_focus_wnd = (key == KEY_FORWARD) ? next_focus_wnd->m_next_sibling : next_focus_wnd->m_prev_sibling;
+			next_focus_wnd = (key == NAV_FORWARD) ? next_focus_wnd->m_next_sibling : next_focus_wnd->m_prev_sibling;
 		}
 		if (!next_focus_wnd)
 		{// Search whole brother wnd
-			next_focus_wnd = (key == KEY_FORWARD) ? old_focus_wnd->m_parent->m_top_child : old_focus_wnd->m_parent->get_last_child();
+			next_focus_wnd = (key == NAV_FORWARD) ? old_focus_wnd->m_parent->m_top_child : old_focus_wnd->m_parent->get_last_child();
 			while (next_focus_wnd && (!next_focus_wnd->is_focus_wnd()))
 			{
-				next_focus_wnd = (key == KEY_FORWARD) ? next_focus_wnd->m_next_sibling : next_focus_wnd->m_prev_sibling;
+				next_focus_wnd = (key == NAV_FORWARD) ? next_focus_wnd->m_next_sibling : next_focus_wnd->m_prev_sibling;
 			}
 		}
 		if (next_focus_wnd)
@@ -468,16 +470,6 @@ protected:
 			parent = parent->m_parent;
 		}
 	}
-	void wnd2screen(c_rect &rect) const
-	{
-		int l = rect.m_left;
-		int t = rect.m_top;
-		wnd2screen(l, t);
-
-		int r = (l + rect.Width() - 1);
-		int b = (t + rect.Height() - 1);
-		rect.SetRect(l, t, r, b);
-	}
 
 	int load_child_wnd(WND_TREE *p_child_tree)
 	{
@@ -512,12 +504,12 @@ protected:
 protected:
 	WND_STATUS		m_status;
 	WND_ATTRIBUTION	m_attr;
-	c_rect			m_wnd_rect;// position relative to parent wnd.
-	c_wnd*			m_parent;
-	c_wnd*			m_top_child;
-	c_wnd*			m_prev_sibling;
-	c_wnd*			m_next_sibling;
-	const char*		m_str;
+	c_rect			m_wnd_rect;		//position relative to parent window.
+	c_wnd*			m_parent;		//parent window
+	c_wnd*			m_top_child;	//the first sub window would be navigated
+	c_wnd*			m_prev_sibling;	//previous brother
+	c_wnd*			m_next_sibling;	//next brother
+	const char*		m_str;			//caption
 
 	const FONT_INFO*	m_font_type;
 	unsigned int		m_font_color;
@@ -525,8 +517,8 @@ protected:
 
 	unsigned short		m_id;
 
-	int					m_z_order;
-	c_wnd*				m_focus_child;//current focused wnd
+	int					m_z_order;		//the graphic level for rendering
+	c_wnd*				m_focus_child;	//current focused window
 	c_surface*			m_surface;
 private:
 	c_wnd(const c_wnd &win);

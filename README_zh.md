@@ -48,14 +48,14 @@
     - [如何传递消息?](documents/HowMessageWork.md)
     - [核心UML示意图](documents/UML.md)
 - 📈学习方法
-    1. **外围** - 成功编译GuiLite库
-    2. **前戏** - 成功运行HelloXXX实例程序
-    3. **交流** - 研读/修改100+行的`HelloXXX/UIcode/UIcode.cpp`源代码
-    4. **深交** - 研读`gui`目录下的代码
-    5. **攻核** - 研读`core`目录下的代码
-    6. **分家** - 丰富，扩展自己的UI功能
+    1. 编译GuiLite库
+    2. 编译、调试：HelloXXX实例程序
+    3. 研读、修改100+行的`HelloXXX/UIcode/UIcode.cpp`源代码
+    4. 研读`widgets`目录下的代码
+    5. 研读`core`目录下的代码
+    6. 扩展/开发自己的GUI库
 - 📞遇到任何问题，都可以[联系我们](#社区交流)，也欢迎加入我们的开发者大家庭
-- 🌐[GitHub链接](https://github.com/idea4good/GuiLite)
+- 🌐[码云Gitee快速链接](https://gitee.com/idea4good/GuiLite)
 
 ## Demo展示墙
 点击你喜欢的实例，并运行在你的硬件上面
@@ -67,7 +67,7 @@
     <td align="center"><a href="https://github.com/idea4good/GuiLiteSamples/tree/master/HelloStar"><img src="documents/HelloStar.gif" width="200px;"/><br /><sub><b>Star on STM32</b></sub></a>
   </tr>
   <tr>
-    <td align="center"><a href="https://github.com/idea4good/GuiLiteSamples/tree/master/HelloNets"><img src="documents/HelloNets-mcu.gif" width="200px;"/><br /><sub><b>Nets on STM32</b></sub></a>
+    <td align="center"><a href="https://github.com/idea4good/GuiLiteSamples/tree/master/Hello3Dwave"><img src="documents/Hello3Dwave.gif" width="200px;"/><br /><sub><b>3D wave on STM32</b></sub></a>
     <td align="center"><a href="https://github.com/idea4good/GuiLiteSamples/tree/master/HelloNoTouch"><img src="documents/HelloNoTouch.gif" width="200px;"/><br /><sub><b>Keyboard on STM32</b></sub></a>
     <td align="center"><a href="https://github.com/idea4good/GuiLiteSamples/tree/master/HelloMario"><img src="documents/HelloMario.gif" width="200px;"/><br /><sub><b>Mario on STM32</b></sub></a>
     <td align="center"><a href="https://github.com/idea4good/GuiLiteSamples/tree/master/HelloCircle"><img src="documents/HelloCircle.gif" width="200px;"/><br /><sub><b>3D circle on STM32</b></sub></a>
@@ -75,8 +75,8 @@
   <tr>
   <td align="center"><a href="https://github.com/idea4good/GuiLiteSamples/tree/master/HelloTimer"><img src="documents/HelloTimer.gif" width="200px;"/><br /><sub><b>Timer</b></sub></a>
   <td align="center"><a href="https://github.com/idea4good/GuiLiteSamples/tree/master/HelloMolecule"><img src="documents/HelloMolecule.gif" width="200px;"/><br /><sub><b>Molecule move</b></sub></a>
+  <td align="center"><a href="https://github.com/idea4good/GuiLiteSamples/tree/master/HelloPendulum"><img src="documents/HelloPendulum.gif" width="200px;"/><br /><sub><b>Pendulum effect</b></sub></a>
   <td align="center"><a href="https://github.com/idea4good/GuiLiteSamples/tree/master/HelloSlide"><img src="documents/HelloSlide.gif" width="200px;"/><br /><sub><b>Swipe view</b></sub></a>
-  <td align="center"><a href="https://github.com/idea4good/GuiLiteSamples/tree/master/HelloAnimation"><img src="documents/HelloAnimation.gif" width="200px;"/><br /><sub><b>Animation</b></sub></a>
   </tr>
   <tr>
     <td align="center"><a href="https://github.com/idea4good/GuiLiteSamples/tree/master/Hello3D"><img src="documents/iWatch.hello3D.gif" width="200px;"/><br /><sub><b>3D on Apple Watch</b></sub></a>
@@ -97,6 +97,7 @@
   </tr>
   <tr>
     <td align="center"><a href="https://github.com/idea4good/GuiLiteSamples/tree/master/HelloScroll"><img src="documents/HelloScroll.gif" width="600px;"/><br /><sub><b>Scroll widget</b></sub></a>
+    <td align="center"><a href="https://github.com/idea4good/GuiLiteSamples/tree/master/HelloTransparent"><img src="documents/HelloTransparent.gif" width="600px;"/><br /><sub><b>Transparent dialog</b></sub></a>
   </tr>
 </table>
 
@@ -123,5 +124,15 @@
   </tr>
 </table>
 
+大部分demo的UI代码只有100行左右，更多信息点[这里。](https://github.com/idea4good/GuiLiteSamples)
+
 ## 📞社区交流
-- 感谢开发者群的所有同学，是你们塑造了今天的GuiLite！也欢迎新的大神/小白加入我们。<br>[<img src="documents/qq.group.jpg">](https://jq.qq.com/?_wv=1027&k=5EO8D9i)
+- 感谢开发者群的所有同学，是你们塑造了今天的GuiLite！也欢迎新的大神/小白加入我们。
+- GuiLite开发者QQ群：
+<table>
+  <tr>
+    <td align="center"><a href="https://jq.qq.com/?_wv=1027&k=qfvGGAa7"><img src="documents/qq.group-1.jpg" width="240px;"/><br /><sub><b>大群：527251257</b></sub></a>
+    <td align="center"><a href="https://jq.qq.com/?_wv=1027&k=yKnUJj1B"><img src="documents/qq.group-2.jpg" width="240px;"/><br /><sub><b>中群：841031761</b></sub></a>
+    <td align="center"><a href="https://jq.qq.com/?_wv=1027&k=5hc3qwj"><img src="documents/qq.group-3.jpg" width="240px;"/><br /><sub><b>小群：717471210</b></sub></a>
+  </tr>
+</table>

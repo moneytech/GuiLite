@@ -2,7 +2,6 @@
 #define GUILITE_CORE_INCLUDE_DISPLAY_H
 
 #include "../core_include/api.h"
-#include "../core_include/rect.h"
 #include "../core_include/cmd_target.h"
 #include <string.h>
 #include <stdio.h>
@@ -12,9 +11,9 @@
 
 typedef enum
 {
-	Z_ORDER_LEVEL_0,//view/wave/page
-	Z_ORDER_LEVEL_1,//dialog
-	Z_ORDER_LEVEL_2,//editbox/spinbox/listbox/keyboard
+	Z_ORDER_LEVEL_0,//lowest graphic level
+	Z_ORDER_LEVEL_1,//middle graphic level
+	Z_ORDER_LEVEL_2,//highest graphic level
 	Z_ORDER_LEVEL_MAX
 }Z_ORDER_LEVEL;
 
@@ -28,8 +27,9 @@ class c_surface;
 class c_display {
 	friend class c_surface;
 public:
-	inline c_display(void* phy_fb, int display_width, int display_height, int surface_width, int surface_height, unsigned int color_bytes, int surface_cnt, EXTERNAL_GFX_OP* gfx_op = 0);
-	inline c_surface* alloc_surface(Z_ORDER_LEVEL max_zorder);
+	inline c_display(void* phy_fb, int display_width, int display_height, int surface_width, int surface_height, unsigned int color_bytes, int surface_cnt, EXTERNAL_GFX_OP* gfx_op = 0);//multiple surface or surface_no_fb
+	inline c_display(void* phy_fb, int display_width, int display_height, c_surface* surface);//single custom surface
+	inline c_surface* alloc_surface(Z_ORDER_LEVEL max_zorder, c_rect layer_rect = c_rect());//for multiple surfaces
 	inline int swipe_surface(c_surface* s0, c_surface* s1, int x0, int x1, int y0, int y1, int offset);
 	int get_width() { return m_width; }
 	int get_height() { return m_height; }
@@ -55,7 +55,7 @@ public:
 
 	int snap_shot(const char* file_name)
 	{
-		if (!m_phy_fb)
+		if (!m_phy_fb || (m_color_bytes !=2 && m_color_bytes != 4))
 		{
 			return -1;
 		}
@@ -88,51 +88,28 @@ private:
 	int				m_width;		//in pixels
 	int				m_height;		//in pixels
 	int				m_color_bytes;	//16 bits, 32 bits only
-	void* m_phy_fb;
+	void*			m_phy_fb;		//physical framebuffer
 	int				m_phy_read_index;
 	int				m_phy_write_index;
-	c_surface* m_surface_group[SURFACE_CNT_MAX];
-	int				m_surface_cnt;
+	c_surface*		m_surface_group[SURFACE_CNT_MAX];
+	int				m_surface_cnt;	//surface count
 	int				m_surface_index;
 };
 
-class c_frame_layer
+class c_layer
 {
 public:
-	c_frame_layer() { fb = 0; }
-	unsigned short* fb;
-	c_rect 	visible_rect;
+	c_layer() { fb = 0; }
+	void* fb;		//framebuffer
+	c_rect 	rect;	//framebuffer area
 };
 
-#define GL_ROUND_RGB_32(rgb) (rgb & 0xFFF8FCF8) //make RGB32 = RGB16
 class c_surface {
 	friend class c_display; friend class c_bitmap;
 public:
-	c_surface(c_display* display, unsigned int width, unsigned int height, unsigned int color_bytes) : m_width(width), m_height(height), m_color_bytes(color_bytes), m_fb(0), m_is_active(false), m_max_zorder(Z_ORDER_LEVEL_0), m_top_zorder(Z_ORDER_LEVEL_0), m_phy_fb(0), m_phy_write_index(0), m_display(0)
+	c_surface(unsigned int width, unsigned int height, unsigned int color_bytes, Z_ORDER_LEVEL max_zorder = Z_ORDER_LEVEL_0, c_rect overlpa_rect = c_rect()) : m_width(width), m_height(height), m_color_bytes(color_bytes), m_fb(0), m_is_active(false), m_top_zorder(Z_ORDER_LEVEL_0), m_phy_fb(0), m_phy_write_index(0), m_display(0)
 	{
-		if (display)
-		{
-			m_display = display;
-			m_phy_fb = display->m_phy_fb;
-			m_phy_write_index = &display->m_phy_write_index;
-		}
-		m_frame_layers[Z_ORDER_LEVEL_0].visible_rect = c_rect(0, 0, m_width, m_height);
-	}
-
-	void set_surface(Z_ORDER_LEVEL max_z_order)
-	{
-		m_max_zorder = max_z_order;
-
-		if (m_display->m_surface_cnt > 1)
-		{
-			m_fb = calloc(m_width * m_height, m_color_bytes);
-		}
-
-		for (int i = Z_ORDER_LEVEL_0; i < m_max_zorder; i++)
-		{//Top layber fb always be 0
-			m_frame_layers[i].fb = (unsigned short*)calloc(m_width * m_height, sizeof(unsigned short));
-			ASSERT(0 != m_frame_layers[i].fb);
-		}
+		(overlpa_rect == c_rect()) ? set_surface(max_zorder, c_rect(0, 0, width - 1, height - 1)) : set_surface(max_zorder, overlpa_rect);
 	}
 
 	int get_width() { return m_width; }
@@ -140,28 +117,24 @@ public:
 
 	unsigned int get_pixel(int x, int y, unsigned int z_order)
 	{
-		if (x >= m_width || y >= m_height || x < 0 || y < 0 ||
-			z_order >= Z_ORDER_LEVEL_MAX)
+		if (x >= m_width || y >= m_height || x < 0 || y < 0 || z_order >= Z_ORDER_LEVEL_MAX)
 		{
 			ASSERT(false);
 			return 0;
 		}
-
-		if (z_order == m_max_zorder)
+		if (m_layers[z_order].fb)
 		{
-			if (m_fb)
-			{
-				return (m_color_bytes == 4) ? ((unsigned int*)m_fb)[y * m_width + x] : GL_RGB_16_to_32(((unsigned short*)m_fb)[y * m_width + x]);
-			}
-			else if (m_phy_fb)
-			{
-				return (m_color_bytes == 4) ? ((unsigned int*)m_phy_fb)[y * m_width + x] : GL_RGB_16_to_32(((unsigned short*)m_phy_fb)[y * m_width + x]);
-			}
-			return 0;
+			return (m_color_bytes == 4) ? ((unsigned int*)(m_layers[z_order].fb))[y * m_width + x] : GL_RGB_16_to_32(((unsigned short*)(m_layers[z_order].fb))[y * m_width + x]);
 		}
-
-		unsigned short rgb_16 = ((unsigned short*)(m_frame_layers[z_order].fb))[y * m_width + x];
-		return GL_RGB_16_to_32(rgb_16);
+		else if (m_fb)
+		{
+			return (m_color_bytes == 4) ? ((unsigned int*)m_fb)[y * m_width + x] : GL_RGB_16_to_32(((unsigned short*)m_fb)[y * m_width + x]);
+		}
+		else if (m_phy_fb)
+		{
+			return (m_color_bytes == 4) ? ((unsigned int*)m_phy_fb)[y * m_width + x] : GL_RGB_16_to_32(((unsigned short*)m_phy_fb)[y * m_width + x]);
+		}
+		return 0;
 	}
 
 	virtual void draw_pixel(int x, int y, unsigned int rgb, unsigned int z_order)
@@ -175,40 +148,46 @@ public:
 			ASSERT(false);
 			return;
 		}
-		rgb = GL_ROUND_RGB_32(rgb);
+
 		if (z_order == m_max_zorder)
 		{
 			return draw_pixel_on_fb(x, y, rgb);
 		}
-
+		
 		if (z_order > (unsigned int)m_top_zorder)
 		{
 			m_top_zorder = (Z_ORDER_LEVEL)z_order;
 		}
 
-		if (0 == m_frame_layers[z_order].visible_rect.PtInRect(x, y))
+		if (m_layers[z_order].rect.pt_in_rect(x, y))
 		{
-			ASSERT(false);
-			return;
+			c_rect layer_rect = m_layers[z_order].rect;
+			if (m_color_bytes == 4)
+			{
+				((unsigned int*)(m_layers[z_order].fb))[(x - layer_rect.m_left) + (y - layer_rect.m_top) * layer_rect.width()] = rgb;
+			}
+			else
+			{
+				((unsigned short*)(m_layers[z_order].fb))[(x - layer_rect.m_left) + (y - layer_rect.m_top) * layer_rect.width()] = GL_RGB_32_to_16(rgb);
+			}
 		}
-		((unsigned short*)(m_frame_layers[z_order].fb))[x + y * m_width] = GL_RGB_32_to_16(rgb);
-
+		
 		if (z_order == m_top_zorder)
 		{
 			return draw_pixel_on_fb(x, y, rgb);
 		}
 
-		bool is_covered = false;
+		bool be_overlapped = false;
 		for (unsigned int tmp_z_order = Z_ORDER_LEVEL_MAX - 1; tmp_z_order > z_order; tmp_z_order--)
 		{
-			if (true == m_frame_layers[tmp_z_order].visible_rect.PtInRect(x, y))
+			if (m_layers[tmp_z_order].rect.pt_in_rect(x, y))
 			{
-				is_covered = true;
+				be_overlapped = true;
 				break;
 			}
 		}
 
-		if (!is_covered)
+		if (!be_overlapped)
 		{
 			draw_pixel_on_fb(x, y, rgb);
 		}
@@ -221,7 +200,6 @@ public:
 		x1 = (x1 > (m_width - 1)) ? (m_width - 1) : x1;
 		y1 = (y1 > (m_height - 1)) ? (m_height - 1) : y1;
 
-		rgb = GL_ROUND_RGB_32(rgb);
 		if (z_order == m_max_zorder)
 		{
 			return fill_rect_on_fb(x0, y0, x1, y1, rgb);
@@ -230,15 +208,23 @@ public:
 		if (z_order == m_top_zorder)
 		{
 			int x, y;
-			unsigned short* mem_fb;
+			c_rect layer_rect = m_layers[z_order].rect;
 			unsigned int rgb_16 = GL_RGB_32_to_16(rgb);
 			for (y = y0; y <= y1; y++)
 			{
-				x = x0;
-				mem_fb = &((unsigned short*)m_frame_layers[z_order].fb)[y * m_width + x];
-				for (; x <= x1; x++)
+				for (x = x0; x <= x1; x++)
 				{
-					*mem_fb++ = rgb_16;
+					if (layer_rect.pt_in_rect(x, y))
+					{
+						if (m_color_bytes == 4)
+						{
+							((unsigned int*)m_layers[z_order].fb)[(y - layer_rect.m_top) * layer_rect.width() + (x - layer_rect.m_left)] = rgb;
+						}
+						else
+						{
+							((unsigned short*)m_layers[z_order].fb)[(y - layer_rect.m_top) * layer_rect.width() + (x - layer_rect.m_left)] = rgb_16;
+						}
+					}
 				}
 			}
 			return fill_rect_on_fb(x0, y0, x1, y1, rgb);
@@ -268,99 +254,35 @@ public:
 
 	void draw_line(int x1, int y1, int x2, int y2, unsigned int rgb, unsigned int z_order)
 	{
-		int dx, dy, e;
-		dx = x2 - x1;
-		dy = y2 - y1;
+		int dx, dy, x, y, e;
 
-		if ((dx >= 0) && (dy >= 0))
+		(x1 > x2) ? (dx = x1 - x2) : (dx = x2 - x1);
+		(y1 > y2) ? (dy = y1 - y2) : (dy = y2 - y1);
+
+		if (((dx > dy) && (x1 > x2)) || ((dx <= dy) && (y1 > y2)))
 		{
-			if (dx >= dy)
+			x = x2; y = y2;
+			x2 = x1; y2 = y1;
+			x1 = x; y1 = y;
+		}
+		x = x1; y = y1;
+
+		if (dx > dy)
+		{
+			e = dy - dx / 2;
+			for (; x1 <= x2; ++x1, e += dy)
 			{
-				e = dy - dx / 2;
-				for (; x1 <= x2; x1++, e += dy)
-				{
-					draw_pixel(x1, y1, rgb, z_order);
-					if (e > 0) { y1++; e -= dx; }
-				}
-			}
-			else
-			{
-				e = dx - dy / 2;
-				for (; y1 <= y2; y1++, e += dx)
-				{
-					draw_pixel(x1, y1, rgb, z_order);
-					if (e > 0) { x1++; e -= dy; }
-				}
+				draw_pixel(x1, y1, rgb, z_order);
+				if (e > 0) { e -= dx; (y > y2) ? --y1 : ++y1; }
 			}
 		}
-
-		else if ((dx >= 0) && (dy < 0))
+		else
 		{
-			dy = -dy;
-			if (dx >= dy)
+			e = dx - dy / 2;
+			for (; y1 <= y2; ++y1, e += dx)
 			{
-				e = dy - dx / 2;
-				for (; x1 <= x2; x1++, e += dy)
-				{
-					draw_pixel(x1, y1, rgb, z_order);
-					if (e > 0) { y1--; e -= dx; }
-				}
-			}
-			else
-			{
-				e = dx - dy / 2;
-				for (; y1 >= y2; y1--, e += dx)
-				{
-					draw_pixel(x1, y1, rgb, z_order);
-					if (e > 0) { x1++; e -= dy; }
-				}
-			}
-		}
-
-		else if ((dx < 0) && (dy >= 0))
-		{
-			dx = -dx;
-			if (dx >= dy)
-			{
-				e = dy - dx / 2;
-				for (; x1 >= x2; x1--, e += dy)
-				{
-					draw_pixel(x1, y1, rgb, z_order);
-					if (e > 0) { y1++; e -= dx; }
-				}
-			}
-			else
-			{
-				e = dx - dy / 2;
-				for (; y1 <= y2; y1++, e += dx)
-				{
-					draw_pixel(x1, y1, rgb, z_order);
-					if (e > 0) { x1--; e -= dy; }
-				}
-			}
-		}
-
-		else if ((dx < 0) && (dy < 0))
-		{
-			dx = -dx;
-			dy = -dy;
-			if (dx >= dy)
-			{
-				e = dy - dx / 2;
-				for (; x1 >= x2; x1--, e += dy)
-				{
-					draw_pixel(x1, y1, rgb, z_order);
-					if (e > 0) { y1--; e -= dx; }
-				}
-			}
-			else
-			{
-				e = dx - dy / 2;
-				for (; y1 >= y2; y1--, e += dx)
-				{
-					draw_pixel(x1, y1, rgb, z_order);
-					if (e > 0) { x1--; e -= dy; }
-				}
+				draw_pixel(x1, y1, rgb, z_order);
+				if (e > 0) { e -= dy; (x > x2) ? --x1 : ++x1; }
 			}
 		}
 	}
@@ -420,51 +342,23 @@ public:
 	bool is_active() { return m_is_active; }
 	c_display* get_display() { return m_display; }
 
-	int set_frame_layer_visible_rect(c_rect& rect, unsigned int z_order)
+	int show_layer(c_rect& rect, unsigned int z_order)
 	{
-		if (rect == m_frame_layers[z_order].visible_rect)
-		{
-			return 0;
-		}
-		if (rect.m_left < 0 || rect.m_left >= m_width ||
-			rect.m_right < 0 || rect.m_right >= m_width ||
-			rect.m_top < 0 || rect.m_top >= m_height ||
-			rect.m_bottom < 0 || rect.m_bottom >= m_height)
-		{
-			ASSERT(false);
-			return -1;
-		}
-		if (!(z_order > Z_ORDER_LEVEL_0&& z_order < Z_ORDER_LEVEL_MAX))
-		{
-			ASSERT(false);
-			return -2;
-		}
-		if (z_order < (unsigned int)m_top_zorder)
-		{
-			ASSERT(false);
-			return -3;
-		}
-		m_top_zorder = (Z_ORDER_LEVEL)z_order;
+		ASSERT(z_order >= Z_ORDER_LEVEL_0 && z_order < Z_ORDER_LEVEL_MAX);
 
-		c_rect old_rect = m_frame_layers[z_order].visible_rect;
-		//Recover the lower layer
-		int src_zorder = (Z_ORDER_LEVEL)(z_order - 1);
-		for (int y = old_rect.m_top; y <= old_rect.m_bottom; y++)
+		c_rect layer_rect = m_layers[z_order].rect;
+		ASSERT(rect.m_left >= layer_rect.m_left && rect.m_right <= layer_rect.m_right &&
+			rect.m_top >= layer_rect.m_top && rect.m_bottom <= layer_rect.m_bottom);
+
+		void* fb = m_layers[z_order].fb;
+		int width = layer_rect.width();
+		for (int y = rect.m_top; y <= rect.m_bottom; y++)
 		{
-			for (int x = old_rect.m_left; x <= old_rect.m_right; x++)
+			for (int x = rect.m_left; x <= rect.m_right; x++)
 			{
-				if (!rect.PtInRect(x, y))
-				{
-					unsigned int rgb = ((unsigned short*)(m_frame_layers[src_zorder].fb))[x + y * m_width];
-					draw_pixel_on_fb(x, y, GL_RGB_16_to_32(rgb));
-				}
+				unsigned int rgb = (m_color_bytes == 4) ? ((unsigned int*)fb)[(x - layer_rect.m_left) + (y - layer_rect.m_top) * width] : GL_RGB_16_to_32(((unsigned short*)fb)[(x - layer_rect.m_left) + (y - layer_rect.m_top) * width]);
+				draw_pixel_on_fb(x, y, rgb);
 			}
-		}
-
-		m_frame_layers[z_order].visible_rect = rect;
-		if (rect.IsEmpty())
-		{
-			m_top_zorder = (Z_ORDER_LEVEL)(z_order - 1);
 		}
 		return 0;
 	}
@@ -531,9 +425,7 @@ protected:
 			(m_color_bytes == 4) ? ((unsigned int*)m_fb)[y * m_width + x] = rgb : ((unsigned short*)m_fb)[y * m_width + x] = GL_RGB_32_to_16(rgb);
 		}
 
-		int display_width = m_display->get_width();
-		int display_height = m_display->get_height();
-		if (m_is_active && (x < display_width) && (y < display_height))
+		if (m_is_active && (x < m_display->get_width()) && (y < m_display->get_height()))
 		{
 			if (m_color_bytes == 4)
 			{
@@ -547,24 +439,47 @@ protected:
 		}
 	}
 
+	void attach_display(c_display* display)
+	{
+		ASSERT(display);
+		m_display = display;
+		m_phy_fb = display->m_phy_fb;
+		m_phy_write_index = &display->m_phy_write_index;
+	}
+
+	void set_surface(Z_ORDER_LEVEL max_z_order, c_rect layer_rect)
+	{
+		m_max_zorder = max_z_order;
+		if (m_display && (m_display->m_surface_cnt > 1))
+		{
+			m_fb = calloc(m_width * m_height, m_color_bytes);
+		}
+
+		for (int i = Z_ORDER_LEVEL_0; i < m_max_zorder; i++)
+		{//Top layber fb always be 0
+			ASSERT(m_layers[i].fb = calloc(layer_rect.width() * layer_rect.height(), m_color_bytes));
+			m_layers[i].rect = layer_rect;
+		}
+	}
+
 	int				m_width;		//in pixels
 	int				m_height;		//in pixels
 	int				m_color_bytes;	//16 bits, 32 bits only
-	void* m_fb;						//frame buffer you could see
-	c_frame_layer 	m_frame_layers[Z_ORDER_LEVEL_MAX];//Top layber fb always be 0
-	bool			m_is_active;
-	Z_ORDER_LEVEL	m_max_zorder;
-	Z_ORDER_LEVEL	m_top_zorder;
-	void* m_phy_fb;
-	int* m_phy_write_index;
-	c_display* m_display;
+	void*			m_fb;			//frame buffer you could see
+	c_layer 		m_layers[Z_ORDER_LEVEL_MAX];//all graphic layers
+	bool			m_is_active;	//active flag
+	Z_ORDER_LEVEL	m_max_zorder;	//the highest graphic layer the surface will have
+	Z_ORDER_LEVEL	m_top_zorder;	//the current highest graphic layer the surface have
+	void*			m_phy_fb;		//physical framebufer
+	int*			m_phy_write_index;
+	c_display*		m_display;
 };
 
-class c_surface_no_fb : public c_surface {//No physical framebuffer
+class c_surface_no_fb : public c_surface {//No physical framebuffer, render with external graphic interface
 	friend class c_display;
+public:
+	c_surface_no_fb(unsigned int width, unsigned int height, unsigned int color_bytes, struct EXTERNAL_GFX_OP* gfx_op, Z_ORDER_LEVEL max_zorder = Z_ORDER_LEVEL_0, c_rect overlpa_rect = c_rect()) : c_surface(width, height, color_bytes, max_zorder, overlpa_rect), m_gfx_op(gfx_op) {}
 protected:
-	c_surface_no_fb(c_display* display, unsigned int width, unsigned int height, unsigned int color_bytes, struct EXTERNAL_GFX_OP* gfx_op) :
-		c_surface(display, width, height, color_bytes), m_gfx_op(gfx_op) {}
 	virtual void fill_rect_on_fb(int x0, int y0, int x1, int y1, unsigned int rgb)
 	{
 		if (!m_gfx_op)
@@ -637,45 +552,29 @@ protected:
 
 inline c_display::c_display(void* phy_fb, int display_width, int display_height, int surface_width, int surface_height, unsigned int color_bytes, int surface_cnt, EXTERNAL_GFX_OP* gfx_op) : m_width(display_width), m_height(display_height), m_color_bytes(color_bytes), m_phy_fb(phy_fb), m_phy_read_index(0), m_phy_write_index(0), m_surface_cnt(surface_cnt), m_surface_index(0)
 {
-	if (color_bytes != 2 && color_bytes != 4)
-	{
-		log_out("Support 16 bits, 32 bits color only!");
-		ASSERT(false);
-	}
+	ASSERT(color_bytes == 2 || color_bytes == 4);
 	ASSERT(m_surface_cnt <= SURFACE_CNT_MAX);
 	memset(m_surface_group, 0, sizeof(m_surface_group));
 	
 	for (int i = 0; i < m_surface_cnt; i++)
-	{// Avoid new operation, new operation maybe crash program on Keil platform sometimes.
-		if (phy_fb)
-		{
-			c_surface tmp(this, surface_width, surface_height, color_bytes);
-			c_surface* surface = (c_surface*)malloc(sizeof(c_surface));
-			ASSERT(surface);
-			memcpy(surface, &tmp, sizeof(tmp));
-			m_surface_group[i] = surface;
-		}
-		else
-		{
-			c_surface_no_fb tmp(this, surface_width, surface_height, color_bytes, gfx_op);
-			c_surface_no_fb* surface = (c_surface_no_fb*)malloc(sizeof(c_surface_no_fb));
-			ASSERT(surface);
-			memcpy(surface, &tmp, sizeof(tmp));
-			m_surface_group[i] = surface;
-		}
+	{
+		m_surface_group[i] = (phy_fb) ? new c_surface(surface_width, surface_height, color_bytes) : new c_surface_no_fb(surface_width, surface_height, color_bytes, gfx_op);
+		m_surface_group[i]->attach_display(this);
 	}
 }
 
-inline c_surface* c_display::alloc_surface(Z_ORDER_LEVEL max_zorder)
+inline c_display::c_display(void* phy_fb, int display_width, int display_height, c_surface* surface) : m_width(display_width), m_height(display_height), m_phy_fb(phy_fb), m_phy_read_index(0), m_phy_write_index(0), m_surface_cnt(1), m_surface_index(0)
 {
-	if (max_zorder >= Z_ORDER_LEVEL_MAX || m_surface_index >= m_surface_cnt)
-	{
-		ASSERT(false);
-		return 0;
-	}
-	int i = m_surface_index++;
-	m_surface_group[i]->set_surface(max_zorder);
-	return m_surface_group[i];
+	m_color_bytes = surface->m_color_bytes;
+	surface->m_is_active = true;
+	(m_surface_group[0] = surface)->attach_display(this);
+}
+
+inline c_surface* c_display::alloc_surface(Z_ORDER_LEVEL max_zorder, c_rect layer_rect)
+{
+	ASSERT(max_zorder < Z_ORDER_LEVEL_MAX && m_surface_index < m_surface_cnt);
+	(layer_rect == c_rect()) ? m_surface_group[m_surface_index]->set_surface(max_zorder, c_rect(0, 0, m_width - 1, m_height - 1)) : m_surface_group[m_surface_index]->set_surface(max_zorder, layer_rect);
+	return m_surface_group[m_surface_index++];
 }
 
 inline int c_display::swipe_surface(c_surface* s0, c_surface* s1, int x0, int x1, int y0, int y1, int offset)

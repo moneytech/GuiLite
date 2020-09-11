@@ -2,7 +2,6 @@
 #define GUILITE_WIDGETS_INCLUDE_EDIT_H
 
 #include "../core_include/api.h"
-#include "../core_include/rect.h"
 #include "../core_include/cmd_target.h"
 #include "../core_include/wnd.h"
 #include "../core_include/resource.h"
@@ -44,18 +43,17 @@ protected:
 	}
 	virtual void on_paint()
 	{
-		c_rect rect;
+		c_rect rect, kb_rect;
 		get_screen_rect(rect);
-		c_rect empty_rect;
-		empty_rect.Empty();
+		s_keyboard.get_screen_rect(kb_rect);
 		switch (m_status)
 		{
 		case STATUS_NORMAL:
 			if (m_z_order > m_parent->get_z_order())
 			{
 				s_keyboard.disconnect();
-				m_surface->set_frame_layer_visible_rect(empty_rect, s_keyboard.get_z_order());
 				m_z_order = m_parent->get_z_order();
+				m_surface->show_layer(kb_rect, m_z_order);
 				m_attr = (WND_ATTRIBUTION)(ATTR_VISIBLE | ATTR_FOCUS);
 			}
 			m_surface->fill_rect(rect, c_theme::get_color(COLOR_WND_NORMAL), m_z_order);
@@ -65,8 +63,8 @@ protected:
 			if (m_z_order > m_parent->get_z_order())
 			{
 				s_keyboard.disconnect();
-				m_surface->set_frame_layer_visible_rect(empty_rect, s_keyboard.get_z_order());
 				m_z_order = m_parent->get_z_order();
+				m_surface->show_layer(kb_rect, m_z_order);
 				m_attr = (WND_ATTRIBUTION)(ATTR_VISIBLE | ATTR_FOCUS);
 			}
 			m_surface->fill_rect(rect, c_theme::get_color(COLOR_WND_FOCUS), m_z_order);
@@ -98,16 +96,16 @@ protected:
 		m_status = STATUS_NORMAL;
 		on_paint();
 	}
-	virtual void on_key(KEY_TYPE key)
+	virtual void on_navigate(NAVIGATION_KEY key)
 	{
 		switch (key)
 		{
-		case KEY_ENTER:
-			(m_status == STATUS_PUSHED) ? s_keyboard.on_key(key) : (on_touch(m_wnd_rect.m_left, m_wnd_rect.m_top, TOUCH_DOWN), on_touch(m_wnd_rect.m_left, m_wnd_rect.m_top, TOUCH_UP));
+		case NAV_ENTER:
+			(m_status == STATUS_PUSHED) ? s_keyboard.on_navigate(key) : (on_touch(m_wnd_rect.m_left, m_wnd_rect.m_top, TOUCH_DOWN), on_touch(m_wnd_rect.m_left, m_wnd_rect.m_top, TOUCH_UP));
 			return;
-		case KEY_BACKWARD:
-		case KEY_FORWARD:
-			return (m_status == STATUS_PUSHED) ? s_keyboard.on_key(key) : c_wnd::on_key(key);
+		case NAV_BACKWARD:
+		case NAV_FORWARD:
+			return (m_status == STATUS_PUSHED) ? s_keyboard.on_navigate(key) : c_wnd::on_navigate(key);
 		}
 	}
 	virtual void on_touch(int x, int y, TOUCH_ACTION action)
@@ -145,10 +143,6 @@ private:
 	void show_keyboard()
 	{
 		s_keyboard.connect(this, IDD_KEY_BOARD, m_kb_style);
-
-		c_rect kb_rect;
-		s_keyboard.get_screen_rect(kb_rect);
-		m_surface->set_frame_layer_visible_rect(kb_rect, s_keyboard.get_z_order());
 		s_keyboard.show_window();
 	}
 	void on_touch_down(int x, int y)
@@ -160,14 +154,14 @@ private:
 		kb_rect_relate_2_edit_parent.m_top += m_wnd_rect.m_top;
 		kb_rect_relate_2_edit_parent.m_bottom += m_wnd_rect.m_top;
 
-		if (m_wnd_rect.PtInRect(x, y))
+		if (m_wnd_rect.pt_in_rect(x, y))
 		{//click edit box
 			if (STATUS_NORMAL == m_status)
 			{
 				m_parent->set_child_focus(this);
 			}
 		}
-		else if (kb_rect_relate_2_edit_parent.PtInRect(x, y))
+		else if (kb_rect_relate_2_edit_parent.pt_in_rect(x, y))
 		{//click key board
 			c_wnd::on_touch(x, y, TOUCH_DOWN);
 		}
@@ -189,7 +183,7 @@ private:
 		}
 		else if (STATUS_PUSHED == m_status)
 		{
-			if (m_wnd_rect.PtInRect(x, y))
+			if (m_wnd_rect.pt_in_rect(x, y))
 			{//click edit box
 				m_status = STATUS_FOCUSED;
 				on_paint();
